@@ -3,23 +3,12 @@
 	name = Damien Sorresso
 	email = dsorresso@microsoft.com
 
-[url "git@github.com:fungible-inc/"]
-	insteadOf = fungible://
-
 # git-fix specifications for Fungible at Microsoft. Issues are tracked with
 # Jira, which we don't yet have a command line interface for.
 [fix "branch"]
 	userName = dsorresso
+	problemRegex = [0-9]{4,}
 	wipNamespace = wip
 	prNamespace = PR
-	commitTrailerProperty = Bug-Id
+	bugIdTrailer = Bug-Id
 	initDone = true
-
-[fix "problem"]
-	regex = [0-9]{5,}
-	issueTrackerCommand =
-	getVerb =
-	setVerb =
-	stageProperty =
-	titleProperty =
-	branchProperty =
