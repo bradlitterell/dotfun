@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
+libdir="${dotfiles}/lib"
+sharedir="${dotfiles}/.share"
+bindir="${dotfiles}/bin"
+libexecdir="${dotfiles}/libexec"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+
+# Usage
+GIT_PARSEOPT_SPEC="\
+git dotfun GIT-COMMAND [ARGUMENT ARGUMENT ...]
+
+Runs a git command on the dotfun repository.
+--
+"
+
+function __cmd()
+{
+	git --git-dir=$HOME/.dotfun --work-tree=$HOME "$@"
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	# We don't initialize the CLI module here since we're just a dumb shell to
+	# run git commands on the dotfiles repo.
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long \
+				--stop-at-non-option -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local n_shift=0
+		local arg=""
+		local arg_opt=()
+
+		case "$1" in
+		--)
+			shift
+			break
+			;;
+		-*)
+			break
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	__cmd "$@"
+}
+
+__main "$@"
