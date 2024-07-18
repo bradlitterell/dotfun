@@ -4,7 +4,7 @@
 	email = dsorresso@microsoft.com
 
 # git-fix specifications for Fungible at Microsoft. Issues are tracked with
-# Jira, which we don't yet have a command line interface for.
+# Jira.
 [fix "branch"]
 	userName = dsorresso
 	problemRegex = [0-9]{4,}
@@ -12,3 +12,6 @@
 	prNamespace = PR
 	bugIdTrailer = Bug-Id
 	initDone = true
+
+[bug "default"]
+	tracker = FunJira
