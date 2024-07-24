@@ -34,6 +34,7 @@ FUNJIRA_API="http://jira.fungible.local:8080/rest/api/2"
 FUNJIRA_PROJECT=
 FUNJIRA_NUMBER=
 FUNJIRA_USERNAME=
+FUNJIRA_SECRETS=
 FUNJIRA_KEY=
 FUNJIRA_ISSUE=
 FUNJIRA_UPDATE_FIELDS=()
@@ -69,17 +70,17 @@ function FunJira._api()
 	auth="${FUNJIRA_USERNAME}:$pw"
 	if [ -n "$data" ]; then
 		r=$(CLI.command curl -s -X "$which" \
-				-u "$auth" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
 				-d "$data" \
-				"$url")
+				-K- \
+				"$url" <<< "--user $auth")
 	else
 		r=$(CLI.command curl -s -X "$which" \
-				-u "$auth" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
-				"$url")
+				-K- \
+				"$url" <<< "--user $auth")
 	fi
 
 	Plist.init_with_raw "json" "$r"
@@ -206,7 +207,7 @@ function FunJira._from_jira_status()
 
 	Plist.init_with_raw "json" "$js_jira"
 	v=$(Plist.get_value "fields.status.id" "string")
-	CLI.die_ifz "$v" "failed to get status code from json response: $js_jira"
+	CLI.die_ifz "$v" "failed to get status id from json response: $js_jira"
 
 	# A lot of these are redundant because they're used by different teams to
 	# express the same thing. But just map all of them for the sake of
@@ -221,7 +222,7 @@ function FunJira._from_jira_status()
 		#     4     -> Reopened
 		#     10505 -> Declined
 		#     10507 -> Planning
-		echo "scheduled"
+		v="scheduled"
 		;;
 	10000|10200|10401|10501|10510|10511|10512)
 		# Maps to "scheduled"
@@ -233,14 +234,14 @@ function FunJira._from_jira_status()
 		#     10510 -> Waiting for Support
 		#     10511 -> Waiting for Customer
 		#     10512 -> Pending
-		echo "scheduled"
+		v="scheduled"
 		;;
 	3|10506)
 		# Maps to "active"
 		#
 		#     3     -> In Progress
 		#     10506 -> Implementing
-		echo "active"
+		v="active"
 		;;
 	10001|10002|10100|10300|10301|10500)
 		# Maps to "review"
@@ -251,7 +252,7 @@ function FunJira._from_jira_status()
 		#     10300 -> In PR
 		#     10301 -> In Bundle Build
 		#     10500 -> Awaiting Approval
-		echo "review"
+		v="review"
 		;;
 	5|6|10400|10504)
 		# Maps to "merged"
@@ -260,9 +261,8 @@ function FunJira._from_jira_status()
 		#     6     -> Closed
 		#     10400 -> In Prod
 		#     10504 -> Complete
-		echo "merged"
+		v="merged"
 		;;
-
 	esac
 
 	Plist.init_with_raw "json" "$js"
@@ -303,6 +303,50 @@ function FunJira._from_jira_branch()
 	Plist.get "json"
 }
 
+function FunJira._to_jira_component()
+{
+	local v="$1"
+	local js_jira="$2"
+	local js='{
+		"update": {
+			"components": [
+				{
+					"set": [
+						{
+
+						}
+					]
+				}
+			]
+		}
+	}'
+
+	# I'm a bit surprised that setting the component isn't a transition, since
+	# you might want to enforce access controls on issues that were in one
+	# component before transitioning them to another component that is e.g. less
+	# restricted.
+	Plist.init_with_raw "json" "$js"
+	Plist.set_value "update.components.0.set.0.name" "$v"
+	Plist.get "json"
+}
+
+function FunJira._from_jira_component()
+{
+	local js_jira="$1"
+	local js="$2"
+	local v=
+
+	# Jira allows for an issue to refer to multiple components, but mercifully,
+	# I don't think we need that.
+	Plist.init_with_raw "json" "$js_jira"
+	v=$(Plist.get_value "fields.components.0.name" "string")
+	CLI.die_ifz "$v" "failed to get component from json response: $js_jira"
+
+	Plist.init_with_raw "json" "$js"
+	Plist.set_value "Component" "string" "$v"
+	Plist.get "json"
+}
+
 function FunJira._translate_field()
 {
 	local f="$1"
@@ -332,6 +376,13 @@ function FunJira._translate_field()
 			"fungible.branch"
 		)
 		;;
+	Component)
+		fieldvec=(
+			"field"
+			"Component"
+			"FunJira._${whichway}_component"
+		)
+		;;
 	esac
 
 	echo "${fieldvec[*]}"
@@ -343,6 +394,7 @@ function FunJira.init()
 	local p="$1"
 	local n="$2"
 	local username="$3"
+	local secrets="$4"
 
 	# We rely on the CLI and Plist modules, but we're loaded lazily, so we need
 	# the importer to load them on our behalf. If we tried to load them
@@ -374,21 +426,25 @@ function FunJira.init()
 	FUNJIRA_PROJECT="$p"
 	FUNJIRA_NUMBER="$n"
 	FUNJIRA_USERNAME="$username"
+	FUNJIRA_SECRETS="$4"
 
 	Module.config 0 "fungible jira"
 	Module.config 1 "api" "$FUNJIRA_API"
 	Module.config 1 "project" "$FUNJIRA_PROJECT"
 	Module.config 1 "number" "$FUNJIRA_NUMBER"
 	Module.config 1 "username" "$FUNJIRA_USERNAME"
+	Module.config 1 "secrets store" "$FUNJIRA_SECRETS"
 }
 
 function FunJira.init_tracker()
 {
 	local js=
 	local cnt=
+	local gitdir=$(Git.check_repo)
+	local cachekey="${FUNJIRA_CONFIG}.key"
 	local pk=
 
-	pk=$(Git.run config "${FUNJIRA_CONFIG}.key")
+	pk=$(Git.run config "$cachekey")
 	if [ -n "$pk" ]; then
 		FUNJIRA_KEY="$pk"
 		FUNJIRA_ISSUE="${pk}-$FUNJIRA_NUMBER"
@@ -396,6 +452,8 @@ function FunJira.init_tracker()
 		Module.config 1 "issue key" "$FUNJIRA_KEY"
 		Module.config 1 "issue" "$FUNJIRA_KEY"
 		return 0
+	elif [ -z "$gitdir" ]; then
+		cachekey=
 	fi
 
 	js=$(FunJira._api "GET" "issue/createmeta")
@@ -433,8 +491,10 @@ function FunJira.init_tracker()
 	Module.config 1 "issue key" "$FUNJIRA_KEY"
 	Module.config 1 "issue" "$FUNJIRA_ISSUE"
 
-	Git.run config --local "${FUNJIRA_CONFIG}.key" "$FUNJIRA_KEY"
-	CLI.die_check $? "failed to set issue key in git config"
+	if [ -n "$cachekey" ]; then
+		Git.run config --local "$cachekey" "$FUNJIRA_KEY"
+		CLI.die_check $? "failed to set issue key in git config"
+	fi
 }
 
 function FunJira.get_tracker_field()
