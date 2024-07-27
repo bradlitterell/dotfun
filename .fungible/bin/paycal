@@ -1,0 +1,316 @@
+#!/bin/bash
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)/.."; popd > /dev/null
+libdirfun="${dotfun}/lib"
+bindirfun="${dotfun}/bin"
+
+dotfiles="${dotfun}"
+if [ ! -d "${dotfiles}/lib" ]; then
+	dotfiles="${dotfun}/../../home/dotfiles"
+fi
+
+libdir="${dotfiles}/lib"
+bindir="${dotfiles}/bin"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Git.sh"
+
+# Parsed options
+GIT_PARSEOPT_SPEC="\
+paycal [options] [FILE]
+
+Generates a calendar with correct pay dates based on the pay date table from \
+aka.ms/paydays. The Outlook calendar that you can download is broken RFC5545 \
+since it uses an event set to recur every 15 days. The problem is that's not \
+how Microsoft paydays work -- they are on the 15th of each month and the last \
+working day of the month, with adjustments for federal holidays and weekends \
+to the most proximate preceding working day. This is not expressible as a \
+recurring event.
+
+Whoever created the calendar set up the event recurrence and then probably \
+fixed up individual dates in Outlook. Outlook then wrote bad RFC5545 by \
+encoding the DTSTART field as a DATE and not a DATETIME, but the spec says \
+that if the DTSTART is a DATE, then it has to be the same date as the \
+RECURRENCE-ID. And the value in the RECURRENCE-ID field is the one computed \
+from the very simple RRULE. Since these are all-day events, they cannot be \
+DATETIME, and so they have to agree.
+
+This is particularly painful because not all the dates needed to be fixed up, \
+just most of them (in 2024 anyway). This means that the calendar file itself \
+is basically unsalvageable, since it's doesn't have all pay dates, just the \
+ones that needed fixing.
+
+Outlook of course displays this just fine, but Calendar on macOS and iOS, \
+which follows the spec, does not.
+
+By default, reads from stdin unless FILE is provided. Input is expected to be \
+of the following form:
+
+SEQUENCE DATE PAY-PERIOD
+
+with each field separated by a tab character.
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+i,ics-file=FILE               Write the resulting iCalendar data to FILE. If \
+not specified, output is written to stdout
+
+$(CLI.get_global_blurb)
+"
+
+PAYCAL_OPT_OUTPUT=
+PAYCAL_OPT_INPUT=/dev/stdin
+
+# MARK: Utilities
+function create_rfc5545_event()
+{
+	local d_start="$1"
+	local d_end="$2"
+	local s="$3"
+	local p="$4"
+	local s_stripped=$(sed -E 's/^0+//;' <<< "$s")
+	local seqno=$(( $s_stripped - 1 ))
+	local ical=
+	local summary="Pay Period $s"
+	local description="$p"
+
+	ical=$(strsmash $'\n' \
+		"BEGIN:VEVENT" \
+		"TRANSP:TRANSPARENT" \
+		"DTEND;VALUE=DATE:$d_end" \
+		"UID:$(uuidgen)" \
+		"DESCRIPTION:$description" \
+		"SEQUENCE:$seqno" \
+		"SUMMARY:$summary" \
+		"DTSTART;VALUE=DATE:$d_start" \
+		"RECURRENCE-ID;VALUE=DATE: $d_start" \
+		"END:VEVENT" \
+	)
+
+	echo "$ical"
+	echo
+}
+
+function last_day_of_month()
+{
+	local m="$1"
+	local y="$2"
+
+	case "$m" in
+	1|5|7|8|10|12)
+		echo "31"
+		;;
+	2)
+		if [ $(( $y % 4 )) -eq 0 ]; then
+			echo "29"
+		else
+			echo "28"
+		fi
+		;;
+	3|4|6|9|11)
+		echo "30"
+		;;
+	esac
+}
+
+function parse_human_date()
+{
+	local s="$1"
+	local ifs_old=$IFS
+	local t=
+	local weekday=
+	local month_day=
+	local month=
+	local day=
+	local year=
+
+	IFS=','
+	t=($s)
+	IFS=$ifs_old
+
+	# The first element is the weekday name, which we don't care about.
+	weekday="${t[0]}"
+	month_day=(${t[1]})
+	month="${month_day[0]}"
+	day="${month_day[1]}"
+	year="${t[2]}"
+
+	case "$month" in
+	Jan*)
+		month=1
+		;;
+	Feb*)
+		month=2
+		;;
+	Mar*)
+		month=3
+		;;
+	Apr*)
+		month=4
+		;;
+	May*)
+		month=5
+		;;
+	Jun*)
+		month=6
+		;;
+	Jul*)
+		month=7
+		;;
+	Aug*)
+		month=8
+		;;
+	Sep*)
+		month=9
+		;;
+	Oct*)
+		month=10
+		;;
+	Nov*)
+		month=11
+		;;
+	Dec*)
+		month=12
+		;;
+	*)
+		CLI.die "unsupported month: $month"
+	esac
+
+	if [ $day -gt 31 ]; then
+		CLI.die "unsupported day: $day"
+	fi
+
+	echo "$year $month $day"
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local f=$(CLI.get_run_state_path "ics")
+	local hdr=$(strsmash $'\n' \
+		"BEGIN:VCALENDAR" \
+		"CALSCALE:GREGORIAN" \
+		"VERSION:2.0" \
+		"X-WR-CALNAME:Microsoft 2024 Paydays for Non-Exempt Employees" \
+		"METHOD:PUBLISH" \
+		"PRODID:-//Microsoft Inc.//dotfun//EN" \
+	)
+
+	echo "$hdr" >> "$f"
+	while read -r l; do 
+		local ifs_old=$IFS
+		local t=()
+		local seq=
+		local date=
+		local period=
+		local parsed=()
+		local year=
+		local month=
+		local day=
+		local first_period=
+		local d_start=
+		local d_end=
+
+		IFS=$'\t'
+		t=($l)
+		IFS=$ifs_old
+
+		seq="${t[0]}"
+		date="${t[1]}"
+		period="${t[2]}"
+
+		parsed=($(parse_human_date "$date"))
+		year="${parsed[0]}"
+		month="${parsed[1]}"
+		day="${parsed[2]}"
+
+		# Now compute the start and end dates of each pay period. Every month
+		# has a 15th day, so we can rely on that as indicating the first pay
+		# period if it's at the end of the pay period blurb.
+		d_start=$(printf '%04u%02u%02u' "$year" "$month" "$day")
+		if [[ "$period" =~ 15$ ]]; then
+			local day_next=$(( $day + 1 ))
+			d_end=$(printf '%04u%02u%02u' "$year" "$month" "$day_next")
+		elif [ $month -ne 12 ]; then
+			local day_next=$(( $day + 1 ))
+			local month_next=
+			local last_day=$(last_day_of_month "$month" "$year")
+
+			if [ $day_next -le $last_day ]; then
+				month_next=$month
+			else
+				month_next=$(( $month + 1 ))
+				day_next=1
+			fi
+
+			d_end=$(printf '%04u%02u%02u' "$year" "$month_next" "$day_next")
+		else
+			local year_next=$(( $year + 1 ))
+			local month_next=1
+			d_end=$(printf '%04u%02u%02u' "$year_next" "$month_next" "1")
+		fi
+
+		create_rfc5545_event "$d_start" "$d_end" "$seq" "$period" >> "$f"
+	done < "$PAYCAL_OPT_INPUT"
+
+	if [ -n "$PAYCAL_OPT_OUTPUT" ]; then
+		CLI.command mv "$f" "$PAYCAL_OPT_OUTPUT"
+	else
+		cat "$f"
+	fi
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local n_shift=0
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		CLI.parse_opt "$1"
+		n_shift=$?
+		if [ $n_shift -gt 0 ]; then
+			shift $n_shift
+			continue
+		fi
+
+		case "$1" in
+		-i | --ics-file=*)
+			PAYCAL_OPT_OUTPUT="$arg"
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			break
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	if [ $# -ge 1 ]; then
+		PAYCAL_OPT_INPUT="$1"
+	fi
+
+	__cmd
+}
+
+__main "$@"
