@@ -277,16 +277,8 @@ function __main()
 	)"
 
 	while [ $# -ne 0 ]; do
-		local n_shift=0
 		local arg="$(CLI.parse_argument "$1")"
 		local arg_opt=()
-
-		CLI.parse_opt "$1"
-		n_shift=$?
-		if [ $n_shift -gt 0 ]; then
-			shift $n_shift
-			continue
-		fi
 
 		case "$1" in
 		-i | --ics-file=*)
@@ -298,7 +290,10 @@ function __main()
 			break
 			;;
 		-*)
-			break
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-revparse will not have normalized an
+			# unrecognized option.
+			shift
 			;;
 		*)
 			break

@@ -38,7 +38,6 @@ function __main()
 	)"
 
 	while [ $# -ne 0 ]; do
-		local n_shift=0
 		local arg=""
 		local arg_opt=()
 
