@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)/.."; popd > /dev/null
+libdirfun="${dotfun}/lib"
+bindirfun="${dotfun}/bin"
+
+dotfiles="${dotfun}"
+if [ ! -d "${dotfiles}/lib" ]; then
+	dotfiles="${dotfun}/../../home/dotfiles"
+fi
+
+libdir="${dotfiles}/lib"
+bindir="${dotfiles}/bin"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Git.sh"
+
+# Parsed options
+GIT_PARSEOPT_SPEC="\
+funblock
+
+Unblocks FunOS development and testing. Requires that homebrew has already \
+been installed from https://brew.sh. This will be done as part of the dot \
+bootstrap from the dotfiles project.
+
+$(CLI.get_stuckopt_blurb)
+--
+$(CLI.get_global_blurb)
+"
+
+# MARK: Globals
+FUNBLOCK_BINUTILS=$(strsmash '' \
+	"http://dochub.fungible.local/doc/sw/tools/mips/" \
+	"mips64-unknown-elf-binutils-2.40_gcc-12.2.0_gdb-11.2-Darwin_arm64.tar.xz" \
+)
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local xcompdir="/Users/Shared/cross/mips64"
+	local binutils=$(CLI.get_run_state_path "binutils.tar.xz")
+	local v_arg=$(CLI.get_verbosity_opt "v")
+	local s_arg=$(CLI.get_verbosity_opt "s")
+
+	CLI.command brew install jq
+	CLI.die_check $? "failed to install jq"
+
+	CLI.command mkdir -p "$xcompdir"
+	CLI.die_check $? "failed to create cross-compiler directory"
+
+	CLI.command curl $s_arg "$FUNBLOCK_BINUTILS" -o "$binutils"
+	CLI.die_check $? "failed to fetch binutils"
+
+	CLI.command tar -xz${v_arg}f "$binutils" -C "$xcompdir"
+	CLI.die_check $? "failed to unarchive binutils"
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		case "$1" in
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-revparse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	__cmd
+}
+
+__main "$@"
