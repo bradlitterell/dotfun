@@ -1,0 +1,2 @@
+export FUNSRC=${HOME}/src/fun
+export SDKDIR=${FUNSRC}/FunSDK-small
