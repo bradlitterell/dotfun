@@ -1,2 +1,5 @@
 [url "git@github.com:fungible-inc/"]
 	insteadOf = fungible://
+
+[url "https://AzureCSI@dev.azure.com/AzureCSI/Fungible/_git/"]
+	insteadOf = fungible-ado://
