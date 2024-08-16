@@ -1,0 +1,13 @@
+{
+    "Name": "FunSDK-small",
+    "URL": "fungible://FunSDK-small",
+    "BuildTool": "make",
+    "BuildVerbosityFormat": "dV",
+    "BuildCommand": "./scripts/bob --sdkup",
+    "CleanCommand": "./scripts/bob --clean-all",
+    "TagPrefix": "bld_",
+    "Exports":
+    {
+        "SDKDIR": "%WORKSPACE%/FunSDK-small"
+    }
+}

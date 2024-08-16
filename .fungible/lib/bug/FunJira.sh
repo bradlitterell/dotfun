@@ -401,25 +401,25 @@ function FunJira.init()
 	# directly, we'd overwrite the importer's state from those modules.
 	check_available CLI.init
 	if [ $? -ne 0 ]; then
-		echo "importer must also import CLI"
+		echo "importer must also import CLI" >&2
 		exit 1
 	fi
 
 	check_available Plist.init_with_file
 	if [ $? -ne 0 ]; then
-		echo "importer must also import Plist"
+		echo "importer must also import Plist" >&2
 		exit 1
 	fi
 
 	check_available Git.init
 	if [ $? -ne 0 ]; then
-		echo "importer must also import Git"
+		echo "importer must also import Git" >&2
 		exit 1
 	fi
 
 	check_available Keychain.init
 	if [ $? -ne 0 ]; then
-		echo "importer must also import Keychain"
+		echo "importer must also import Keychain" >&2
 		exit 1
 	fi
 

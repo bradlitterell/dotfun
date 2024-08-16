@@ -1,0 +1,329 @@
+#!/bin/bash
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
+libdirfun="${dotfun}/lib"
+bindirfun="${dotfun}/bin"
+libexecdirfun="${dotfun}/libexec"
+
+if [ ! -d "${dotfiles}/lib" ]; then
+	dotfiles="$dotfiles/../.dotfiles"
+fi
+
+libdir="${dotfiles}/lib"
+bindir="${dotfiles}/bin"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Git.sh"
+. "${libdir}/Branch.sh"
+. "${libdir}/Assembly.sh"
+. "${libdirfun}/Fundle.sh"
+
+# Parsed options
+GIT_PARSEOPT_SPEC="\
+git-funfetti [options] CHIP [BOOT-ARG BOOT-ARG ...]
+
+Fun-on-demand driver which automates the process of building a DPU firmware \
+bundle for the specified CHIP with the firmware components specified by the \
+user. The following FIRMWAREs may be given as arguments to the f,firmware \
+option:
+
+    FunOS          The main FunOS image
+    FunSDK-small   The minimal FunOS SDK required to build FunOS
+
+Firmwares may be built for different platforms, and by default they are built \
+for physical SoCs. The following PLATFORMs may be given as arguments to the \
+p,platform option:
+
+    soc       The physical SoC target
+    posix     The POSIX simulator target
+    qemu      The QEMU emulator platform
+    emu       The Palladium FPGA platform
+
+Images may be built as different variants, and by default, the debug variants \
+are built. The following VARIANTs may be given as arguments to the v,variant \
+option:
+
+    release      Omits virtually all debugging functionality
+    noasan       Similar to debug, except that the Address Sanitizer is disabled
+    debug        Includes all debugging functionality
+
+$(CLI.get_stuckopt_blurb)
+--
+ Mandatory options
+f,firmware=FIRMWARE[@BASE]   A firmware image to build. This may be specified \
+multiple times, in which case several images are built and deployed to \
+fun-on-demand. If a BASE is included in the argument, that ref of the project \
+is used as the merge base, otherwise the default branch is used as the merge \
+base. Firmwares are built in the order specified on the command line
+
+ Available options
+b,branch=FIRMWARE:BRANCH-NAME A branch to merge into FIRMWARE before building. \
+This option may be specified multiple times, in which case the branches are \
+merged in the order specified
+
+T,base-tag=BASE-TAG           Use BASE-TAG as the merge base for all firmware \
+builds. This is useful if all projects are aligned on tag numbers. This option \
+will only affect firmwares which did not explicitly specify a base tag
+
+p,platform=PLATFORM           The platform to build for. If unspecified, \
+images are built for physical SoC targets
+
+V,variant=VARIANT             The variant to build
+
+n,cluster-number=NUMBER       The specific fun-on-demand server to connect to \
+for operations. If unspecified, one is chosen at random
+
+m,email-address=EMAIL-ADDRESS Add EMAIL-ADDRESS to the list of email addresses \
+that should receive status updates for the job. This can be specified multiple \
+times. By default, the email address in the user.email gitconfig(7) variable \
+be included
+
+B,boot-args=BOOT-ARGS-FILE    A file containing one BOOT-ARG per line
+
+$(CLI.get_global_blurb)
+"
+GIT_FUNFETTI_OPT_FIRMWARES=()
+GIT_FUNFETTI_OPT_BRANCHES=()
+GIT_FUNFETTI_OPT_PLATFORM=
+GIT_FUNFETTI_OPT_VARIANT=
+GIT_FUNFETTI_BASE_TAG=latest
+GIT_FUNFETTI_OPT_HOST=
+GIT_FUNFETTI_OPT_EMAIL_ADDRESSES=(
+	"placeholder"
+)
+GIT_FUNFETTI_OPT_BOOT_ARGS_FILE=
+GIT_FUNFETTI_OPT_CHIP=
+
+# MARK: Executable State
+GIT_FUNFETTI_BUG_ID=
+
+# MARK: Utilities
+function derive_machine()
+{
+	local chip="$GIT_FUNFETTI_OPT_CHIP"
+	local p_suffix=
+	local v_suffix=
+
+	if [ -n "$GIT_FUNFETTI_OPT_PLATFORM" ]; then
+		p_suffix="$GIT_FUNFETTI_OPT_PLATFORM"
+	fi
+
+	case "$GIT_FUNFETTI_OPT_VARIANT" in
+	release)
+		v_suffix="-release"
+		;;
+	noasan)
+		v_suffix="-noasan"
+		;;
+	debug)
+		v_suffix=
+		;;
+	esac
+
+	echo "${chip}${p_suffix}${v_suffix}"
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local v_arg=$(CLI.get_verbosity_opt "v")
+	local target=$(derive_machine)
+	local pvmap=(
+		"CHIP" "$GIT_FUNFETTI_OPT_CHIP"
+	)
+	local i=0
+	local imgroot=
+	local bug_id=
+	local js=
+	local prefix=
+	local branch=
+
+	# Check to see if we're set up for ssh keys on the host. Note that the
+	# configuration file sets the username to use for the fun-on-demand cluster.
+	CLI.command ssh -vn \
+			-o 'PasswordAuthentication no' \
+			-o 'BatchMode yes' \
+			"$GIT_FUNFETTI_OPT_HOST" 2>&1 | grep -qE '^Authenticated to'
+	if [ $? -ne 0 ]; then
+		CLI.warn "bootstrapping authentication to $GIT_FUNFETTI_OPT_HOST..."
+		
+		CLI.command sshauth $v_arg \
+				-k "$HOME/.ssh/id_rsa4k.pub" \
+				"$GIT_FUNFETTI_OPT_HOST"
+		CLI.die_check $? "authentication failed: $GIT_FUNFETTI_OPT_HOST"
+	fi
+
+	bug_id=$(Branch.guess_primary_problem)
+	CLI.die_ifz "$bug_id" "failed to guess branch problem"
+
+	js=$(Git.run bug -m "BugPrefix")
+	Plist.init_with_raw "json" "$js"
+
+	prefix=$(Plist.get_value "BugPrefix" "string")
+	CLI.die_ifz "$prefix" "failed to get bug prefix"
+
+	bug_id="${prefix}${bug_id}"
+	branch=$(Git.get_current_branch)
+	CLI.die_ifz "$branch" "failed to get current branch"
+
+	Assembly.init "$target" "${GIT_FUNFETTI_OPT_FIRMWARES[@]}"
+	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
+		local v="${pvmap[$(( i + 0 ))]}"
+		local vv="${pvmap[$(( i + 1 ))]}"
+
+		Assembly.set_variable "$v" "$vv"
+	done
+
+	for (( i = 0; i < ${#GIT_FUNFETTI_OPT_BRANCHES[@]}; i += 2 )); do
+		local fw=${GIT_FUNFETTI_OPT_BRANCHES[$(( i + 0 ))]}
+		local b=${GIT_FUNFETTI_OPT_BRANCHES[$(( i + 1 ))]}
+
+		Assembly.merge_branch "$fw" "$b"
+	done
+
+	Assembly.assemble
+	CLI.die_check $? "DPU assembly failed"
+
+	imgroot=$(Assembly.get_image_root)
+	Fundle.init "$bug_id" "$branch" "$GIT_FUNFETTI_OPT_CHIP" "$imgroot"
+	if [ -n "$GIT_FUNFETTI_OPT_BOOT_ARGS_FILE" ]; then
+		Fundle.set_boot_arg_file "$GIT_FUNFETTI_OPT_BOOT_ARGS_FILE"
+	fi
+
+	for em in "${GIT_FUNFETTI_OPT_EMAIL_ADDRESSES[@]}"; do
+		Fundle.set_email "$em"
+	done
+
+	if [ "$1" == "--" ]; then
+		shift
+	fi
+
+	for ba in "$@"; do
+		Fundle.set_boot_arg "$ba"
+	done
+
+	Fundle.package "signed"
+	Fundle.submit "$GIT_FUNFETTI_OPT_HOST"
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+	local email=
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+		local fw=
+		local fwat=
+		local fwb=
+
+		case "$1" in
+		-f | --firmware=*)
+			arg_opt=($(CLI.split_specifier_nospace '@' "$arg"))
+			fw="${arg_opt[0]}"
+			fwat="$(initdefault "${arg_opt[1]}" "infer")"
+
+			GIT_FUNFETTI_OPT_FIRMWARES+=("$fw" "$fwat")
+			shift
+			;;
+		-b | --branch=*)
+			arg_opt=($(CLI.split_specifier_nospace ':' "$arg"))
+			fw="${arg_opt[0]}"
+			fwb="${arg_opt[1]}"
+			CLI.die_ifz "$fwb" "invalid branch specifier: $arg"
+
+			GIT_FUNFETTI_OPT_BRANCHES+=("$fw" "$fwb")
+			shift
+			;;
+		-p | --platform=*)
+			GIT_FUNFETTI_OPT_PLATFORM="$arg"
+			shift
+			;;
+		-V | --variant=*)
+			GIT_FUNFETTI_OPT_VARIANT="$arg"
+			shift
+			;;
+		-T | --base-tag=*)
+			GIT_FUNFETTI_BASE_TAG="$arg"
+			shift
+			;;
+		-n | --cluster-number=*)
+			GIT_FUNFETTI_OPT_HOST="$arg"
+			shift
+			;;
+		-m | --email-address=*)
+			GIT_FUNFETTI_OPT_EMAIL_ADDRESSES+=("$arg")
+			shift
+			;;
+		-B | --boot-args=*)
+			GIT_FUNFETTI_OPT_BOOT_ARGS_FILE="$arg"
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-rev-parse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	CLI.init_git
+
+	email=$(Git.run config user.email)
+	CLI.die_ifz "$email" "no email address in git config"
+
+	# Always include the user's email address first.
+	GIT_FUNFETTI_OPT_EMAIL_ADDRESSES[0]="$email"
+
+	if [ -z "$GIT_FUNFETTI_OPT_HOST" ]; then
+		local x=
+
+		x=$(od -An -tu2 -N2 /dev/urandom | tr -d ' ')
+		x=$(( (x % 2) + 1 ))
+		GIT_FUNFETTI_OPT_HOST=$x
+	fi
+
+	for (( i = 0; i < ${#GIT_FUNFETTI_OPT_FIRMWARES[@]}; i += 2 )); do
+		local fw=${GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 0 ))]}
+		local fwat=${GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 1 ))]}
+
+		if [ "$fwat" = "infer" ]; then
+			GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 1 ))]="$GIT_FUNFETTI_BASE_TAG"
+		fi
+	done
+
+	GIT_FUNFETTI_OPT_HOST=$(printf '%02d' "$GIT_FUNFETTI_OPT_HOST")
+	GIT_FUNFETTI_OPT_HOST="fun-on-demand-$GIT_FUNFETTI_OPT_HOST"
+
+	if [ $# -lt 1 -o "$1" == "--" ]; then
+		CLI.die "must provide a chip"
+	fi
+
+	GIT_FUNFETTI_OPT_CHIP="$1"
+	shift
+
+	__cmd "$@"
+}
+
+__main "$@"

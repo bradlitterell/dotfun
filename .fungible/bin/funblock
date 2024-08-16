@@ -58,6 +58,11 @@ function __cmd()
 
 	CLI.command tar -xz${v_arg}f "$binutils" -C "$xcompdir"
 	CLI.die_check $? "failed to unarchive binutils"
+
+	# Needed for FunOS signing.
+	v_arg=$(CLI.get_verbosity_opt "dv")
+	CLI.command pip ${v_arg} install request
+	CLI.die_check $? "failed to install requests Python package"
 }
 
 function __main()
