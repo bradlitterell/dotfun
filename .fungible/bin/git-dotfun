@@ -8,6 +8,13 @@ libdirfun="${dotfun}/lib"
 bindirfun="${dotfun}/bin"
 libexecdirfun="${dotfun}/libexec"
 
+if [ ! -d "${dotfiles}/lib" ]; then
+	dotfiles="$dotfiles/../.dotfiles"
+fi
+
+libdir="${dotfiles}/lib"
+bindir="${dotfiles}/bin"
+
 # Imports
 . "${libdir}/Lib.sh"
 . "${libdir}/Module.sh"

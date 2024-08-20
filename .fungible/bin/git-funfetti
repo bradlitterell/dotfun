@@ -94,6 +94,7 @@ B,boot-args=BOOT-ARGS-FILE    A file containing one BOOT-ARG per line
 
 $(CLI.get_global_blurb)
 "
+
 O_FIRMWARES=()
 O_BRANCHES=()
 O_PLATFORM=
