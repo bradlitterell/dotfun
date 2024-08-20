@@ -26,7 +26,7 @@ bindir="${dotfiles}/bin"
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\
-git-funfetti [options] CHIP [BOOT-ARG BOOT-ARG ...]
+git-funfetti [options] CHIP [-- [BOOT-ARG BOOT-ARG ...]]
 
 Fun-on-demand driver which automates the process of building a DPU firmware \
 bundle for the specified CHIP with the firmware components specified by the \
@@ -55,21 +55,27 @@ option:
 
 $(CLI.get_stuckopt_blurb)
 --
- Mandatory options
+ Available options
 f,firmware=FIRMWARE[@BASE]   A firmware image to build. This may be specified \
 multiple times, in which case several images are built and deployed to \
 fun-on-demand. If a BASE is included in the argument, that ref of the project \
 is used as the merge base, otherwise the default branch is used as the merge \
 base. Firmwares are built in the order specified on the command line
 
- Available options
 b,branch=FIRMWARE:BRANCH-NAME A branch to merge into FIRMWARE before building. \
 This option may be specified multiple times, in which case the branches are \
 merged in the order specified
 
-T,base-tag=BASE-TAG           Use BASE-TAG as the merge base for all firmware \
+T,shared-base-tag=BASE-TAG    Use BASE-TAG as the merge base for all firmware \
 builds. This is useful if all projects are aligned on tag numbers. This option \
 will only affect firmwares which did not explicitly specify a base tag
+
+F,current-firmware            Infer the firmware, branch, and base tag to use \
+from the current git repository. The firmware name is derived from the base \
+name of the repository remote URL, the branch is inferred from the currently \
+checked out branch, and the base tag is derived from the first ancestor tag of \
+the current branch and is used as though it was given to the T,shared-base-tag \
+option
 
 p,platform=PLATFORM           The platform to build for. If unspecified, \
 images are built for physical SoC targets
@@ -92,16 +98,13 @@ O_FIRMWARES=()
 O_BRANCHES=()
 O_PLATFORM=
 O_VARIANT=
-O_BASE_TAG=latest
+O_SHARED_BASE_TAG=latest
 O_HOST=
 O_EMAIL_ADDRESSES=(
 	"placeholder"
 )
 O_BOOT_ARGS_FILE=
 O_CHIP=
-
-# MARK: Executable State
-GIT_FUNFETTI_BUG_ID=
 
 # MARK: Utilities
 function derive_machine()
@@ -198,10 +201,6 @@ function __cmd()
 		Fundle.set_email "$em"
 	done
 
-	if [ "$1" == "--" ]; then
-		shift
-	fi
-
 	for ba in "$@"; do
 		Fundle.set_boot_arg "$ba"
 	done
@@ -246,16 +245,26 @@ function __main()
 			O_BRANCHES+=("$fw" "$fwb")
 			shift
 			;;
+		-T | --shared-base-tag=*)
+			O_SHARED_BASE_TAG="$arg"
+			shift
+			;;
+		-F | --current-firmware)
+			fw="$(Git.get_name)"
+			fwat="$(Git.get_parent_branch)"
+			fwb="$(Git.get_current_branch)"
+
+			O_FIRMWARES+=("$fw" "$fwat")
+			O_BRANCHES+=("$fw" "$fwb")
+			O_SHARED_BASE_TAG="$fwat"
+			shift
+			;;
 		-p | --platform=*)
 			O_PLATFORM="$arg"
 			shift
 			;;
 		-V | --variant=*)
 			O_VARIANT="$arg"
-			shift
-			;;
-		-T | --base-tag=*)
-			O_BASE_TAG="$arg"
 			shift
 			;;
 		-n | --cluster-number=*)
@@ -307,7 +316,7 @@ function __main()
 		local fwat=${O_FIRMWARES[$(( i + 1 ))]}
 
 		if [ "$fwat" = "infer" ]; then
-			O_FIRMWARES[$(( i + 1 ))]="$O_BASE_TAG"
+			O_FIRMWARES[$(( i + 1 ))]="$O_SHARED_BASE_TAG"
 		fi
 	done
 
@@ -320,6 +329,10 @@ function __main()
 
 	O_CHIP="$1"
 	shift
+
+	if [ "$1" == "--" ]; then
+		shift
+	fi
 
 	__cmd "$@"
 }
