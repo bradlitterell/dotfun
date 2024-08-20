@@ -23,7 +23,7 @@ fi
 . "${libdir}/Lib.sh"
 . "${libdir}/Module.sh"
 
-# MARK: Fields
+# MARK: Object Fields
 F_FUNDLE_BUG_ID=
 F_FUNDLE_BRANCH=
 F_FUNDLE_CHIP=

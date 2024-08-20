@@ -2,11 +2,11 @@
 
 # Executable preamble
 mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
 pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
-libdir="${dotfiles}/lib"
-sharedir="${dotfiles}/.share"
-bindir="${dotfiles}/bin"
-libexecdir="${dotfiles}/libexec"
+libdirfun="${dotfun}/lib"
+bindirfun="${dotfun}/bin"
+libexecdirfun="${dotfun}/libexec"
 
 # Imports
 . "${libdir}/Lib.sh"
@@ -20,6 +20,7 @@ Runs a git command on the dotfun repository.
 --
 "
 
+# MARK: Command Implementation
 function __cmd()
 {
 	git --git-dir=$HOME/.dotfun --work-tree=$HOME "$@"

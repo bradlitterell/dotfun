@@ -88,17 +88,17 @@ B,boot-args=BOOT-ARGS-FILE    A file containing one BOOT-ARG per line
 
 $(CLI.get_global_blurb)
 "
-GIT_FUNFETTI_OPT_FIRMWARES=()
-GIT_FUNFETTI_OPT_BRANCHES=()
-GIT_FUNFETTI_OPT_PLATFORM=
-GIT_FUNFETTI_OPT_VARIANT=
-GIT_FUNFETTI_BASE_TAG=latest
-GIT_FUNFETTI_OPT_HOST=
-GIT_FUNFETTI_OPT_EMAIL_ADDRESSES=(
+O_FIRMWARES=()
+O_BRANCHES=()
+O_PLATFORM=
+O_VARIANT=
+O_BASE_TAG=latest
+O_HOST=
+O_EMAIL_ADDRESSES=(
 	"placeholder"
 )
-GIT_FUNFETTI_OPT_BOOT_ARGS_FILE=
-GIT_FUNFETTI_OPT_CHIP=
+O_BOOT_ARGS_FILE=
+O_CHIP=
 
 # MARK: Executable State
 GIT_FUNFETTI_BUG_ID=
@@ -106,15 +106,15 @@ GIT_FUNFETTI_BUG_ID=
 # MARK: Utilities
 function derive_machine()
 {
-	local chip="$GIT_FUNFETTI_OPT_CHIP"
+	local chip="$O_CHIP"
 	local p_suffix=
 	local v_suffix=
 
-	if [ -n "$GIT_FUNFETTI_OPT_PLATFORM" ]; then
-		p_suffix="$GIT_FUNFETTI_OPT_PLATFORM"
+	if [ -n "$O_PLATFORM" ]; then
+		p_suffix="$O_PLATFORM"
 	fi
 
-	case "$GIT_FUNFETTI_OPT_VARIANT" in
+	case "$O_VARIANT" in
 	release)
 		v_suffix="-release"
 		;;
@@ -135,7 +135,7 @@ function __cmd()
 	local v_arg=$(CLI.get_verbosity_opt "v")
 	local target=$(derive_machine)
 	local pvmap=(
-		"CHIP" "$GIT_FUNFETTI_OPT_CHIP"
+		"CHIP" "$O_CHIP"
 	)
 	local i=0
 	local imgroot=
@@ -149,14 +149,12 @@ function __cmd()
 	CLI.command ssh -vn \
 			-o 'PasswordAuthentication no' \
 			-o 'BatchMode yes' \
-			"$GIT_FUNFETTI_OPT_HOST" 2>&1 | grep -qE '^Authenticated to'
+			"$O_HOST" 2>&1 | grep -qE '^Authenticated to'
 	if [ $? -ne 0 ]; then
-		CLI.warn "bootstrapping authentication to $GIT_FUNFETTI_OPT_HOST..."
-		
-		CLI.command sshauth $v_arg \
-				-k "$HOME/.ssh/id_rsa4k.pub" \
-				"$GIT_FUNFETTI_OPT_HOST"
-		CLI.die_check $? "authentication failed: $GIT_FUNFETTI_OPT_HOST"
+		CLI.warn "bootstrapping authentication to $O_HOST..."
+
+		CLI.command sshauth $v_arg -k "$HOME/.ssh/id_rsa4k.pub" "$O_HOST"
+		CLI.die_check $? "authentication failed: $O_HOST"
 	fi
 
 	bug_id=$(Branch.guess_primary_problem)
@@ -172,7 +170,7 @@ function __cmd()
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
-	Assembly.init "$target" "${GIT_FUNFETTI_OPT_FIRMWARES[@]}"
+	Assembly.init "$target" "${O_FIRMWARES[@]}"
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
@@ -180,9 +178,9 @@ function __cmd()
 		Assembly.set_variable "$v" "$vv"
 	done
 
-	for (( i = 0; i < ${#GIT_FUNFETTI_OPT_BRANCHES[@]}; i += 2 )); do
-		local fw=${GIT_FUNFETTI_OPT_BRANCHES[$(( i + 0 ))]}
-		local b=${GIT_FUNFETTI_OPT_BRANCHES[$(( i + 1 ))]}
+	for (( i = 0; i < ${#O_BRANCHES[@]}; i += 2 )); do
+		local fw=${O_BRANCHES[$(( i + 0 ))]}
+		local b=${O_BRANCHES[$(( i + 1 ))]}
 
 		Assembly.merge_branch "$fw" "$b"
 	done
@@ -191,12 +189,12 @@ function __cmd()
 	CLI.die_check $? "DPU assembly failed"
 
 	imgroot=$(Assembly.get_image_root)
-	Fundle.init "$bug_id" "$branch" "$GIT_FUNFETTI_OPT_CHIP" "$imgroot"
-	if [ -n "$GIT_FUNFETTI_OPT_BOOT_ARGS_FILE" ]; then
-		Fundle.set_boot_arg_file "$GIT_FUNFETTI_OPT_BOOT_ARGS_FILE"
+	Fundle.init "$bug_id" "$branch" "$O_CHIP" "$imgroot"
+	if [ -n "$O_BOOT_ARGS_FILE" ]; then
+		Fundle.set_boot_arg_file "$O_BOOT_ARGS_FILE"
 	fi
 
-	for em in "${GIT_FUNFETTI_OPT_EMAIL_ADDRESSES[@]}"; do
+	for em in "${O_EMAIL_ADDRESSES[@]}"; do
 		Fundle.set_email "$em"
 	done
 
@@ -209,7 +207,7 @@ function __cmd()
 	done
 
 	Fundle.package "signed"
-	Fundle.submit "$GIT_FUNFETTI_OPT_HOST"
+	Fundle.submit "$O_HOST"
 }
 
 function __main()
@@ -236,7 +234,7 @@ function __main()
 			fw="${arg_opt[0]}"
 			fwat="$(initdefault "${arg_opt[1]}" "infer")"
 
-			GIT_FUNFETTI_OPT_FIRMWARES+=("$fw" "$fwat")
+			O_FIRMWARES+=("$fw" "$fwat")
 			shift
 			;;
 		-b | --branch=*)
@@ -245,31 +243,31 @@ function __main()
 			fwb="${arg_opt[1]}"
 			CLI.die_ifz "$fwb" "invalid branch specifier: $arg"
 
-			GIT_FUNFETTI_OPT_BRANCHES+=("$fw" "$fwb")
+			O_BRANCHES+=("$fw" "$fwb")
 			shift
 			;;
 		-p | --platform=*)
-			GIT_FUNFETTI_OPT_PLATFORM="$arg"
+			O_PLATFORM="$arg"
 			shift
 			;;
 		-V | --variant=*)
-			GIT_FUNFETTI_OPT_VARIANT="$arg"
+			O_VARIANT="$arg"
 			shift
 			;;
 		-T | --base-tag=*)
-			GIT_FUNFETTI_BASE_TAG="$arg"
+			O_BASE_TAG="$arg"
 			shift
 			;;
 		-n | --cluster-number=*)
-			GIT_FUNFETTI_OPT_HOST="$arg"
+			O_HOST="$arg"
 			shift
 			;;
 		-m | --email-address=*)
-			GIT_FUNFETTI_OPT_EMAIL_ADDRESSES+=("$arg")
+			O_EMAIL_ADDRESSES+=("$arg")
 			shift
 			;;
 		-B | --boot-args=*)
-			GIT_FUNFETTI_OPT_BOOT_ARGS_FILE="$arg"
+			O_BOOT_ARGS_FILE="$arg"
 			shift
 			;;
 		--)
@@ -294,33 +292,33 @@ function __main()
 	CLI.die_ifz "$email" "no email address in git config"
 
 	# Always include the user's email address first.
-	GIT_FUNFETTI_OPT_EMAIL_ADDRESSES[0]="$email"
+	O_EMAIL_ADDRESSES[0]="$email"
 
-	if [ -z "$GIT_FUNFETTI_OPT_HOST" ]; then
+	if [ -z "$O_HOST" ]; then
 		local x=
 
 		x=$(od -An -tu2 -N2 /dev/urandom | tr -d ' ')
 		x=$(( (x % 2) + 1 ))
-		GIT_FUNFETTI_OPT_HOST=$x
+		O_HOST=$x
 	fi
 
-	for (( i = 0; i < ${#GIT_FUNFETTI_OPT_FIRMWARES[@]}; i += 2 )); do
-		local fw=${GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 0 ))]}
-		local fwat=${GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 1 ))]}
+	for (( i = 0; i < ${#O_FIRMWARES[@]}; i += 2 )); do
+		local fw=${O_FIRMWARES[$(( i + 0 ))]}
+		local fwat=${O_FIRMWARES[$(( i + 1 ))]}
 
 		if [ "$fwat" = "infer" ]; then
-			GIT_FUNFETTI_OPT_FIRMWARES[$(( i + 1 ))]="$GIT_FUNFETTI_BASE_TAG"
+			O_FIRMWARES[$(( i + 1 ))]="$O_BASE_TAG"
 		fi
 	done
 
-	GIT_FUNFETTI_OPT_HOST=$(printf '%02d' "$GIT_FUNFETTI_OPT_HOST")
-	GIT_FUNFETTI_OPT_HOST="fun-on-demand-$GIT_FUNFETTI_OPT_HOST"
+	O_HOST=$(printf '%02d' "$O_HOST")
+	O_HOST="fun-on-demand-$O_HOST"
 
 	if [ $# -lt 1 -o "$1" == "--" ]; then
 		CLI.die "must provide a chip"
 	fi
 
-	GIT_FUNFETTI_OPT_CHIP="$1"
+	O_CHIP="$1"
 	shift
 
 	__cmd "$@"

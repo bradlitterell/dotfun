@@ -2,13 +2,14 @@
 
 # Executable preamble
 mydir="$(dirname $0)"
-pushd "$mydir/.." > /dev/null; dotfun="$(pwd)/.."; popd > /dev/null
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
 libdirfun="${dotfun}/lib"
 bindirfun="${dotfun}/bin"
+libexecdirfun="${dotfun}/libexec"
 
-dotfiles="${dotfun}"
 if [ ! -d "${dotfiles}/lib" ]; then
-	dotfiles="${dotfun}/../../home/dotfiles"
+	dotfiles="$dotfiles/../.dotfiles"
 fi
 
 libdir="${dotfiles}/lib"
@@ -58,14 +59,14 @@ with each field separated by a tab character.
 $(CLI.get_stuckopt_blurb)
 --
  Available options
-i,ics-file=FILE               Write the resulting iCalendar data to FILE. If \
-not specified, output is written to stdout
+o,output-ics-file=FILE               Write the resulting iCalendar data to \
+FILE. If not specified, output is written to stdout
 
 $(CLI.get_global_blurb)
 "
 
-PAYCAL_OPT_OUTPUT=
-PAYCAL_OPT_INPUT=/dev/stdin
+O_OUTPUT=
+O_INPUT=/dev/stdin
 
 # MARK: Utilities
 function create_rfc5545_event()
@@ -203,7 +204,7 @@ function __cmd()
 	)
 
 	echo "$hdr" >> "$f"
-	while read -r l; do 
+	while read -r l; do
 		local ifs_old=$IFS
 		local t=()
 		local seq=
@@ -257,10 +258,10 @@ function __cmd()
 		fi
 
 		create_rfc5545_event "$d_start" "$d_end" "$seq" "$period" >> "$f"
-	done < "$PAYCAL_OPT_INPUT"
+	done < "$O_INPUT"
 
-	if [ -n "$PAYCAL_OPT_OUTPUT" ]; then
-		CLI.command mv "$f" "$PAYCAL_OPT_OUTPUT"
+	if [ -n "$O_OUTPUT" ]; then
+		CLI.command mv "$f" "$O_OUTPUT"
 	else
 		cat "$f"
 	fi
@@ -281,8 +282,8 @@ function __main()
 		local arg_opt=()
 
 		case "$1" in
-		-i | --ics-file=*)
-			PAYCAL_OPT_OUTPUT="$arg"
+		-o | --output-ics-file=*)
+			O_OUTPUT="$arg"
 			shift
 			;;
 		--)
@@ -302,7 +303,7 @@ function __main()
 	done
 
 	if [ $# -ge 1 ]; then
-		PAYCAL_OPT_INPUT="$1"
+		O_INPUT="$1"
 	fi
 
 	__cmd

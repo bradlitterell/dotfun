@@ -26,29 +26,29 @@ fi
 . "${libdir}/Module.sh"
 
 # MARK: Globals
-FUNJIRA_KEYCHAIN_IDENTIFIER="local.fungible.jira.dotfiles"
-FUNJIRA_CONFIG="bug.FunJira"
+G_FUNJIRA_API="http://jira.fungible.local:8080/rest/api/2"
+G_FUNJIRA_KEYCHAIN_IDENTIFIER="local.fungible.jira.dotfiles"
+G_FUNJIRA_CONFIG="bug.FunJira"
 
-# MARK: Module State
-FUNJIRA_API="http://jira.fungible.local:8080/rest/api/2"
-FUNJIRA_PROJECT=
-FUNJIRA_NUMBER=
-FUNJIRA_USERNAME=
-FUNJIRA_SECRETS=
-FUNJIRA_KEY=
-FUNJIRA_ISSUE=
-FUNJIRA_UPDATE_FIELDS=()
-FUNJIRA_UPDATE_PROPERTIES=()
-FUNJIRA_UPDATE_TRANSITIONS=()
-FUNJIRA_QUERY_FIELDS=()
-FUNJIRA_QUERY_PROPERTIES=()
+# MARK: Object Fields
+F_FUNJIRA_PROJECT=
+F_FUNJIRA_NUMBER=
+F_FUNJIRA_USERNAME=
+F_FUNJIRA_SECRETS=
+F_FUNJIRA_KEY=
+F_FUNJIRA_ISSUE=
+F_FUNJIRA_UPDATE_FIELDS=()
+F_FUNJIRA_UPDATE_PROPERTIES=()
+F_FUNJIRA_UPDATE_TRANSITIONS=()
+F_FUNJIRA_QUERY_FIELDS=()
+F_FUNJIRA_QUERY_PROPERTIES=()
 
 # MARK: Internal
 function FunJira._get_password()
 {
 	# Fungible's Jira doesn't appear to support personal access tokens, so we
 	# have to stash the password in the Keychain and use basic auth.
-	Keychain.init "$FUNJIRA_KEYCHAIN_IDENTIFIER" "jira" "$FUNJIRA_USERNAME"
+	Keychain.init "$G_FUNJIRA_KEYCHAIN_IDENTIFIER" "jira" "$F_FUNJIRA_USERNAME"
 	Keychain.get_password_or_prompt
 }
 
@@ -57,7 +57,7 @@ function FunJira._api()
 	local which="$1"
 	local call="$2"
 	local data="$3"
-	local url="$FUNJIRA_API/$call"
+	local url="$G_FUNJIRA_API/$call"
 	local auth=
 	local pw=
 	local r=
@@ -65,9 +65,9 @@ function FunJira._api()
 	local message=
 
 	pw=$(FunJira._get_password)
-	CLI.die_ifz $? "failed to get jira password for $FUNJIRA_USERNAME"
+	CLI.die_ifz $? "failed to get jira password for $F_FUNJIRA_USERNAME"
 
-	auth="${FUNJIRA_USERNAME}:$pw"
+	auth="${F_FUNJIRA_USERNAME}:$pw"
 	if [ -n "$data" ]; then
 		r=$(CLI.command curl -s -X "$which" \
 				-H 'Accept: application/json' \
@@ -160,7 +160,7 @@ function FunJira._to_jira_status()
 		;;
 	esac
 
-	rjs=$(FunJira._api "GET" "issue/$FUNJIRA_ISSUE/transitions")
+	rjs=$(FunJira._api "GET" "issue/$F_FUNJIRA_ISSUE/transitions")
 	CLI.die_ifz "$rjs" "failed to get available transitions"
 
 	Plist.init_with_raw "json" "$rjs"
@@ -423,17 +423,17 @@ function FunJira.init()
 		exit 1
 	fi
 
-	FUNJIRA_PROJECT="$p"
-	FUNJIRA_NUMBER="$n"
-	FUNJIRA_USERNAME="$username"
-	FUNJIRA_SECRETS="$4"
+	F_FUNJIRA_PROJECT="$p"
+	F_FUNJIRA_NUMBER="$n"
+	F_FUNJIRA_USERNAME="$username"
+	F_FUNJIRA_SECRETS="$4"
 
 	Module.config 0 "fungible jira"
-	Module.config 1 "api" "$FUNJIRA_API"
-	Module.config 1 "project" "$FUNJIRA_PROJECT"
-	Module.config 1 "number" "$FUNJIRA_NUMBER"
-	Module.config 1 "username" "$FUNJIRA_USERNAME"
-	Module.config 1 "secrets store" "$FUNJIRA_SECRETS"
+	Module.config 1 "api" "$G_FUNJIRA_API"
+	Module.config 1 "project" "$F_FUNJIRA_PROJECT"
+	Module.config 1 "number" "$F_FUNJIRA_NUMBER"
+	Module.config 1 "username" "$F_FUNJIRA_USERNAME"
+	Module.config 1 "secrets store" "$F_FUNJIRA_SECRETS"
 }
 
 function FunJira.init_tracker()
@@ -441,16 +441,16 @@ function FunJira.init_tracker()
 	local js=
 	local cnt=
 	local gitdir=$(Git.check_repo)
-	local cachekey="${FUNJIRA_CONFIG}.key"
+	local cachekey="${G_FUNJIRA_CONFIG}.key"
 	local pk=
 
 	pk=$(Git.run config "$cachekey")
 	if [ -n "$pk" ]; then
-		FUNJIRA_KEY="$pk"
-		FUNJIRA_ISSUE="${pk}-$FUNJIRA_NUMBER"
+		F_FUNJIRA_KEY="$pk"
+		F_FUNJIRA_ISSUE="${pk}-$F_FUNJIRA_NUMBER"
 
-		Module.config 1 "issue key" "$FUNJIRA_KEY"
-		Module.config 1 "issue" "$FUNJIRA_KEY"
+		Module.config 1 "issue key" "$F_FUNJIRA_KEY"
+		Module.config 1 "issue" "$F_FUNJIRA_KEY"
 		return 0
 	elif [ -z "$gitdir" ]; then
 		cachekey=
@@ -475,7 +475,7 @@ function FunJira.init_tracker()
 
 		Plist.init_with_raw "xml1" "$pd"
 		n=$(Plist.get_value "name" "string")
-		if [ "$n" = "$FUNJIRA_PROJECT" ]; then
+		if [ "$n" = "$F_FUNJIRA_PROJECT" ]; then
 			pk=$(Plist.get_value "key" "string")
 			break
 		fi
@@ -483,16 +483,16 @@ function FunJira.init_tracker()
 		Plist.init_with_raw "json" "$js"
 	done
 
-	CLI.die_ifz "$pk" "failed to get issue key for $FUNJIRA_PROJECT"
+	CLI.die_ifz "$pk" "failed to get issue key for $F_FUNJIRA_PROJECT"
 
-	FUNJIRA_KEY="$pk"
-	FUNJIRA_ISSUE="${pk}-$FUNJIRA_NUMBER"
+	F_FUNJIRA_KEY="$pk"
+	F_FUNJIRA_ISSUE="${pk}-$F_FUNJIRA_NUMBER"
 
-	Module.config 1 "issue key" "$FUNJIRA_KEY"
-	Module.config 1 "issue" "$FUNJIRA_ISSUE"
+	Module.config 1 "issue key" "$F_FUNJIRA_KEY"
+	Module.config 1 "issue" "$F_FUNJIRA_ISSUE"
 
 	if [ -n "$cachekey" ]; then
-		Git.run config --local "$cachekey" "$FUNJIRA_KEY"
+		Git.run config --local "$cachekey" "$F_FUNJIRA_KEY"
 		CLI.die_check $? "failed to set issue key in git config"
 	fi
 }
@@ -503,10 +503,10 @@ function FunJira.get_tracker_field()
 
 	case "$f" in
 	Key)
-		echo "$FUNJIRA_KEY"
+		echo "$F_FUNJIRA_KEY"
 		;;
 	BugPrefix)
-		echo "${FUNJIRA_KEY}-"
+		echo "${F_FUNJIRA_KEY}-"
 		;;
 	esac
 }
@@ -521,18 +521,18 @@ function FunJira.update_field()
 	fieldvec=($(FunJira._translate_field "$f" "to_jira"))
 	case "${fieldvec[0]}" in
 	field)
-		FUNJIRA_UPDATE_FIELDS+=(${fieldvec[@]:1:2} "$v")
+		F_FUNJIRA_UPDATE_FIELDS+=(${fieldvec[@]:1:2} "$v")
 		;;
 	property)
-		FUNJIRA_UPDATE_PROPERTIES+=(${fieldvec[@]:1:3} "$v")
+		F_FUNJIRA_UPDATE_PROPERTIES+=(${fieldvec[@]:1:3} "$v")
 		;;
 	transition)
 		# Jira's transition request body only allows for one transition.
-		if [ ${#FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
+		if [ ${#F_FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
 			CLI.die "multiple transitions are not supported"
 		fi
 
-		FUNJIRA_UPDATE_TRANSITIONS+=(${fieldvec[@]:1:2} "$v")
+		F_FUNJIRA_UPDATE_TRANSITIONS+=(${fieldvec[@]:1:2} "$v")
 		;;
 	*)
 		CLI.die "no translation for field: $f"
@@ -549,10 +549,10 @@ function FunJira.query_field()
 	field|transition)
 		# Transitions operate on fields, so if the Jira field is a transition,
 		# we treat it as a field when doing a query.
-		FUNJIRA_QUERY_FIELDS+=(${fieldvec[@]:1:2})
+		F_FUNJIRA_QUERY_FIELDS+=(${fieldvec[@]:1:2})
 		;;
 	property)
-		FUNJIRA_QUERY_PROPERTIES+=(${fieldvec[@]:1:3})
+		F_FUNJIRA_QUERY_PROPERTIES+=(${fieldvec[@]:1:3})
 		;;
 	*)
 		CLI.die "no translation for field: $f"
@@ -570,10 +570,10 @@ function FunJira.update()
 	}'
 
 	js=$(Plist.get "json")
-	for (( i = 0; i < "${#FUNJIRA_UPDATE_FIELDS[@]}"; i += 3 )); do
-		local f="${FUNJIRA_UPDATE_FIELDS[$(( $i + 0 ))]}"
-		local xf="${FUNJIRA_UPDATE_FIELDS[$(( $i + 1 ))]}"
-		local v="${FUNJIRA_UPDATE_FIELDS[$(( $i + 2 ))]}"
+	for (( i = 0; i < "${#F_FUNJIRA_UPDATE_FIELDS[@]}"; i += 3 )); do
+		local f="${F_FUNJIRA_UPDATE_FIELDS[$(( $i + 0 ))]}"
+		local xf="${F_FUNJIRA_UPDATE_FIELDS[$(( $i + 1 ))]}"
+		local v="${F_FUNJIRA_UPDATE_FIELDS[$(( $i + 2 ))]}"
 
 		js=$($xf "$v" "$js")
 		CLI.die_ifz "$js" "failed to update field: $f => $v"
@@ -582,17 +582,17 @@ function FunJira.update()
 		js=$(Plist.get "json")
 	done
 
-	if [ ${#FUNJIRA_UPDATE_FIELDS[@]} -gt 0 ]; then
-		FunJira._api "PUT" "issue/$FUNJIRA_ISSUE" "$js"
-		CLI.die_check $? "failed to update issue: $FUNJIRA_ISSUE"
+	if [ ${#F_FUNJIRA_UPDATE_FIELDS[@]} -gt 0 ]; then
+		FunJira._api "PUT" "issue/$F_FUNJIRA_ISSUE" "$js"
+		CLI.die_check $? "failed to update issue: $F_FUNJIRA_ISSUE"
 	fi
 
 	js=
-	for (( i = 0; i < "${#FUNJIRA_UPDATE_PROPERTIES[@]}"; i += 4 )); do
-		local f="${FUNJIRA_UPDATE_PROPERTIES[$(( $i + 0 ))]}"
-		local xf="${FUNJIRA_UPDATE_PROPERTIES[$(( $i + 1 ))]}"		
-		local p="${FUNJIRA_UPDATE_PROPERTIES[$(( $i + 2 ))]}"
-		local v="${FUNJIRA_UPDATE_PROPERTIES[$(( $i + 3 ))]}"
+	for (( i = 0; i < "${#F_FUNJIRA_UPDATE_PROPERTIES[@]}"; i += 4 )); do
+		local f="${F_FUNJIRA_UPDATE_PROPERTIES[$(( $i + 0 ))]}"
+		local xf="${F_FUNJIRA_UPDATE_PROPERTIES[$(( $i + 1 ))]}"
+		local p="${F_FUNJIRA_UPDATE_PROPERTIES[$(( $i + 2 ))]}"
+		local v="${F_FUNJIRA_UPDATE_PROPERTIES[$(( $i + 3 ))]}"
 
 		# Property values are just JSON blobs, so we don't pass anything for the
 		# second parameter to the translation function. It just gives back the
@@ -600,7 +600,7 @@ function FunJira.update()
 		js=$($xf "$v")
 		CLI.die_ifz "$js" "failed to set update property: $f => $v"
 
-		FunJira._api "PUT" "issue/$FUNJIRA_ISSUE/properties/$p" "$js"
+		FunJira._api "PUT" "issue/$F_FUNJIRA_ISSUE/properties/$p" "$js"
 		CLI.die_check $? "failed to set property: $p"
 	done
 
@@ -613,10 +613,10 @@ function FunJira.update()
 	# Do the transitions last, since our other updates might influence whether
 	# they are legal.
 	js=$(Plist.get "json")
-	for (( i = 0; i < "${#FUNJIRA_UPDATE_TRANSITIONS[@]}"; i += 4 )); do
-		local f="${FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 0 ))]}"
-		local xf="${FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 1 ))]}"
-		local v="${FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 2 ))]}"
+	for (( i = 0; i < "${#F_FUNJIRA_UPDATE_TRANSITIONS[@]}"; i += 4 )); do
+		local f="${F_FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 0 ))]}"
+		local xf="${F_FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 1 ))]}"
+		local v="${F_FUNJIRA_UPDATE_TRANSITIONS[$(( $i + 2 ))]}"
 
 		js=$($xf "$v" "$js")
 		CLI.die_ifz "$js" "failed to set transition: $f => $v"
@@ -624,10 +624,10 @@ function FunJira.update()
 		Plist.init_with_raw "json" "$js"
 	done
 
-	if [ ${#FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
+	if [ ${#F_FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
 		js=$(Plist.get "json")
-		FunJira._api "POST" "issue/$FUNJIRA_ISSUE/transitions" "$js"
-		CLI.die_check $? "failed to transition issue: $FUNJIRA_ISSUE"
+		FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/transitions" "$js"
+		CLI.die_check $? "failed to transition issue: $F_FUNJIRA_ISSUE"
 	fi
 }
 
@@ -637,14 +637,14 @@ function FunJira.query()
 	local js=
 	local jsr='{}'
 
-	for (( i = 0; i < "${#FUNJIRA_QUERY_FIELDS[@]}"; i += 2 )); do
-		local f="${FUNJIRA_QUERY_FIELDS[$(( $i + 0 ))]}"
-		local xf="${FUNJIRA_QUERY_FIELDS[$(( $i + 1 ))]}"
+	for (( i = 0; i < "${#F_FUNJIRA_QUERY_FIELDS[@]}"; i += 2 )); do
+		local f="${F_FUNJIRA_QUERY_FIELDS[$(( $i + 0 ))]}"
+		local xf="${F_FUNJIRA_QUERY_FIELDS[$(( $i + 1 ))]}"
 		local v=
 
 		if [ -z "$js" ]; then
-			js=$(FunJira._api "GET" "issue/$FUNJIRA_ISSUE")
-			CLI.die_ifz "$js" "failed to query issue: $FUNJIRA_ISSUE"
+			js=$(FunJira._api "GET" "issue/$F_FUNJIRA_ISSUE")
+			CLI.die_ifz "$js" "failed to query issue: $F_FUNJIRA_ISSUE"
 		fi
 
 		jsr=$($xf "$js" "$jsr")
@@ -652,12 +652,12 @@ function FunJira.query()
 	done
 
 	# The Jira API only lets us query for one property at a time.
-	for (( i = 0; i < "${#FUNJIRA_QUERY_PROPERTIES[@]}"; i += 3 )); do
-		local f="${FUNJIRA_QUERY_PROPERTIES[$(( $i + 0 ))]}"
-		local xf="${FUNJIRA_QUERY_PROPERTIES[$(( $i + 1 ))]}"		
-		local p="${FUNJIRA_QUERY_PROPERTIES[$(( $i + 2 ))]}"
+	for (( i = 0; i < "${#F_FUNJIRA_QUERY_PROPERTIES[@]}"; i += 3 )); do
+		local f="${F_FUNJIRA_QUERY_PROPERTIES[$(( $i + 0 ))]}"
+		local xf="${F_FUNJIRA_QUERY_PROPERTIES[$(( $i + 1 ))]}"
+		local p="${F_FUNJIRA_QUERY_PROPERTIES[$(( $i + 2 ))]}"
 
-		js=$(FunJira._api "GET" "issue/$FUNJIRA_ISSUE/properties/$p")
+		js=$(FunJira._api "GET" "issue/$F_FUNJIRA_ISSUE/properties/$p")
 		CLI.die_ifz "$js" "failed to query property: $p"
 
 		jsr=$($xf "$js" "$jsr")

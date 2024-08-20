@@ -2,13 +2,14 @@
 
 # Executable preamble
 mydir="$(dirname $0)"
-pushd "$mydir/.." > /dev/null; dotfun="$(pwd)/.."; popd > /dev/null
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
 libdirfun="${dotfun}/lib"
 bindirfun="${dotfun}/bin"
+libexecdirfun="${dotfun}/libexec"
 
-dotfiles="${dotfun}"
 if [ ! -d "${dotfiles}/lib" ]; then
-	dotfiles="${dotfun}/../../home/dotfiles"
+	dotfiles="$dotfiles/../.dotfiles"
 fi
 
 libdir="${dotfiles}/lib"
@@ -34,7 +35,7 @@ $(CLI.get_global_blurb)
 "
 
 # MARK: Globals
-FUNBLOCK_BINUTILS=$(strsmash '' \
+G_BINUTILS=$(strsmash '' \
 	"http://dochub.fungible.local/doc/sw/tools/mips/" \
 	"mips64-unknown-elf-binutils-2.40_gcc-12.2.0_gdb-11.2-Darwin_arm64.tar.xz" \
 )
@@ -53,7 +54,7 @@ function __cmd()
 	CLI.command mkdir -p "$xcompdir"
 	CLI.die_check $? "failed to create cross-compiler directory"
 
-	CLI.command curl $s_arg "$FUNBLOCK_BINUTILS" -o "$binutils"
+	CLI.command curl $s_arg "$G_BINUTILS" -o "$binutils"
 	CLI.die_check $? "failed to fetch binutils"
 
 	CLI.command tar -xz${v_arg}f "$binutils" -C "$xcompdir"
