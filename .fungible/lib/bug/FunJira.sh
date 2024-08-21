@@ -423,6 +423,10 @@ function FunJira.init()
 		exit 1
 	fi
 
+	# If a prefix was provided, then strip it since we're going to get it from
+	# either the config file or bug tracker. We just want this to be a number.
+	n=$(grep -oE '[0-9]+' <<< "$n")
+
 	F_FUNJIRA_PROJECT="$p"
 	F_FUNJIRA_NUMBER="$n"
 	F_FUNJIRA_USERNAME="$username"
@@ -450,7 +454,7 @@ function FunJira.init_tracker()
 		F_FUNJIRA_ISSUE="${pk}-$F_FUNJIRA_NUMBER"
 
 		Module.config 1 "issue key" "$F_FUNJIRA_KEY"
-		Module.config 1 "issue" "$F_FUNJIRA_KEY"
+		Module.config 1 "issue" "$F_FUNJIRA_ISSUE"
 		return 0
 	elif [ -z "$gitdir" ]; then
 		cachekey=

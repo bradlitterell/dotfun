@@ -145,7 +145,6 @@ function __cmd()
 	local imgroot=
 	local bug_id=
 	local js=
-	local prefix=
 	local branch=
 
 	# Check to see if we're set up for ssh keys on the host. Note that the
@@ -163,19 +162,6 @@ function __cmd()
 
 	bug_id=$(Branch.guess_primary_problem)
 	CLI.die_ifz "$bug_id" "failed to guess branch problem"
-
-	js=$(Git.run bug -m "BugPrefix")
-	Plist.init_with_raw "json" "$js"
-
-	prefix=$(Plist.get_value "BugPrefix" "string")
-	CLI.die_ifz "$prefix" "failed to get bug prefix"
-
-	# If we were able to get the full bug identifier from the commit message
-	# trailers, then we don't need to prepend the prefix. But if we had to guess
-	# based on the branch name alone, we'll need the prefix.
-	if [[ "$bug_id" =~ ^$prefix ]]; then
-		bug_id="${prefix}${bug_id}"
-	fi
 
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
