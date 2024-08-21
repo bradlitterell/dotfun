@@ -170,7 +170,13 @@ function __cmd()
 	prefix=$(Plist.get_value "BugPrefix" "string")
 	CLI.die_ifz "$prefix" "failed to get bug prefix"
 
-	bug_id="${prefix}${bug_id}"
+	# If we were able to get the full bug identifier from the commit message
+	# trailers, then we don't need to prepend the prefix. But if we had to guess
+	# based on the branch name alone, we'll need the prefix.
+	if [[ "$bug_id" =~ ^$prefix ]]; then
+		bug_id="${prefix}${bug_id}"
+	fi
+
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
@@ -252,7 +258,7 @@ function __main()
 			;;
 		-F | --current-firmware)
 			fw="$(Git.get_name)"
-			fwat="$(Git.get_parent_branch)"
+			fwat="$(Git.get_branch_base)"
 			fwb="$(Git.get_current_branch)"
 
 			O_FIRMWARES+=("$fw" "$fwat")
