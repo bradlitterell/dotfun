@@ -25,9 +25,17 @@ fi
 . "${libdir}/Lib.sh"
 . "${libdir}/Module.sh"
 
+# We rely on the CLI and Plist modules, but we're loaded lazily, so we need
+# the importer to load them on our behalf. If we tried to load them
+# directly, we'd overwrite the importer's state from those modules.
+assert_available CLI
+assert_available Plist
+assert_available Git
+assert_available Keychain
+
 # MARK: Globals
-G_FUNJIRA_API="http://jira.fungible.local:8080/rest/api/2"
-G_FUNJIRA_KEYCHAIN_IDENTIFIER="local.fungible.jira.dotfiles"
+G_FUNJIRA_URL="http://jira.fungible.local"
+G_FUNJIRA_API="$G_FUNJIRA_URL:8080/rest/api/2"
 G_FUNJIRA_CONFIG="bug.FunJira"
 
 # MARK: Object Fields
@@ -48,7 +56,7 @@ function FunJira._get_password()
 {
 	# Fungible's Jira doesn't appear to support personal access tokens, so we
 	# have to stash the password in the Keychain and use basic auth.
-	Keychain.init "$G_FUNJIRA_KEYCHAIN_IDENTIFIER" "jira" "$F_FUNJIRA_USERNAME"
+	Keychain.init_account "$G_FUNJIRA_URL" "$F_FUNJIRA_USERNAME"
 	Keychain.get_password_or_prompt
 }
 
@@ -395,33 +403,6 @@ function FunJira.init()
 	local n="$2"
 	local username="$3"
 	local secrets="$4"
-
-	# We rely on the CLI and Plist modules, but we're loaded lazily, so we need
-	# the importer to load them on our behalf. If we tried to load them
-	# directly, we'd overwrite the importer's state from those modules.
-	check_available CLI.init
-	if [ $? -ne 0 ]; then
-		echo "importer must also import CLI" >&2
-		exit 1
-	fi
-
-	check_available Plist.init_with_file
-	if [ $? -ne 0 ]; then
-		echo "importer must also import Plist" >&2
-		exit 1
-	fi
-
-	check_available Git.init
-	if [ $? -ne 0 ]; then
-		echo "importer must also import Git" >&2
-		exit 1
-	fi
-
-	check_available Keychain.init
-	if [ $? -ne 0 ]; then
-		echo "importer must also import Keychain" >&2
-		exit 1
-	fi
 
 	# If a prefix was provided, then strip it since we're going to get it from
 	# either the config file or bug tracker. We just want this to be a number.

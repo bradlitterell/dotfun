@@ -4,14 +4,21 @@
 	email = dsorresso@microsoft.com
 
 # git-fix specifications for Fungible at Microsoft. Issues are tracked with
-# Jira.
-[fix "branch"]
-	userName = dsorresso
-	problemRegex = [0-9]{4,}
-	wipNamespace = wip
-	prNamespace = PR
-	bugIdTrailer = Bug-Id
-	initDone = true
+# Jira, and source repositories are hosted in the fungible-inc GitHub
+# organization.
+[fix]
+	username = dsorresso
 
-[bug "default"]
+[fix "wip"]
+	namespace = wip
+
+[fix "pr"]
+	backend = GitHub
+	organization = fungible-inc
+	account = SIGFUN
+	namespace = PR
+
+[fix "bug"]
 	tracker = FunJira
+	regex = [0-9]{4,}
+	trailer = Bug-Id
