@@ -39,7 +39,7 @@ F_FUNDLE_AR=
 function Fundle._scriptify()
 {
 	local flavor="$1"
-	local script="${libexecdirfun}/fodit.sh"
+	local script="${dotfun}/libexec/fodit.sh"
 	local text=$(cat "$script")
 	local v_lvl=$(CLI.get_verbosity)
 	local v_map=(

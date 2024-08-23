@@ -3,17 +3,10 @@
 # Executable preamble
 mydir="$(dirname $0)"
 pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
-pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
-libdirfun="${dotfun}/lib"
-bindirfun="${dotfun}/bin"
-libexecdirfun="${dotfun}/libexec"
-
-if [ ! -d "${dotfiles}/lib" ]; then
-	dotfiles="$dotfiles/../.dotfiles"
-fi
-
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
 libdir="${dotfiles}/lib"
-bindir="${dotfiles}/bin"
 
 # Imports
 . "${libdir}/Lib.sh"
@@ -22,7 +15,7 @@ bindir="${dotfiles}/bin"
 . "${libdir}/Git.sh"
 . "${libdir}/Branch.sh"
 . "${libdir}/Assembly.sh"
-. "${libdirfun}/Fundle.sh"
+. "${funlib}/Fundle.sh"
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\

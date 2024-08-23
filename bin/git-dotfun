@@ -3,17 +3,10 @@
 # Executable preamble
 mydir="$(dirname $0)"
 pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
-pushd "$mydir/../.." > /dev/null; dotfiles="$(pwd)"; popd > /dev/null
-libdirfun="${dotfun}/lib"
-bindirfun="${dotfun}/bin"
-libexecdirfun="${dotfun}/libexec"
-
-if [ ! -d "${dotfiles}/lib" ]; then
-	dotfiles="$dotfiles/../.dotfiles"
-fi
-
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
 libdir="${dotfiles}/lib"
-bindir="${dotfiles}/bin"
 
 # Imports
 . "${libdir}/Lib.sh"
@@ -21,16 +14,38 @@ bindir="${dotfiles}/bin"
 
 # Usage
 GIT_PARSEOPT_SPEC="\
-git dotfun GIT-COMMAND [ARGUMENT ARGUMENT ...]
+git [dotfun GIT-COMMAND|funrun COMMAND] [ARGUMENT ARGUMENT ...]
 
-Runs a git command on the dotfun repository.
+Runs a git command on the dotfun repository. When invoked as git-funrun,
+COMMAND will be run from the in-development repository.
 --
 "
+O_ACTION=__dotfun
 
 # MARK: Command Implementation
-function __cmd()
+function __dotfun()
 {
 	git --git-dir=$HOME/.dotfun --work-tree=$HOME "$@"
+}
+
+function __funrun()
+{
+	local what="$1"
+	local where="$HOME/src/home/dotfun/bin"
+	local cmd="$where/$what"
+
+	set -x
+	if [ -f "$where/git-$what" ]; then
+		cmd="$where/git-$what"
+	fi
+
+	shift
+	"$cmd" "$@"
+}
+
+function __cmd()
+{
+	${O_ACTION} "$@"
 }
 
 function __main()
@@ -62,6 +77,10 @@ function __main()
 			;;
 		esac
 	done
+
+	if [ "$me" = "git-funrun" ]; then
+		O_ACTION="__funrun"
+	fi
 
 	__cmd "$@"
 }
