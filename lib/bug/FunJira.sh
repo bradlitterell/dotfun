@@ -77,6 +77,7 @@ function FunJira._api()
 
 	auth="${F_FUNJIRA_USERNAME}:$pw"
 	if [ -n "$data" ]; then
+		CLI.debug "sending request: $which: $url: $data"
 		r=$(CLI.command curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
@@ -84,6 +85,7 @@ function FunJira._api()
 				-K- \
 				"$url" <<< "--user $auth")
 	else
+		CLI.debug "sending request: $which: $url"
 		r=$(CLI.command curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
@@ -91,6 +93,7 @@ function FunJira._api()
 				"$url" <<< "--user $auth")
 	fi
 
+	CLI.debug "got response: $r"
 	Plist.init_with_raw "json" "$r"
 	http_status=$(Plist.get_value "status-code" "integer" "200")
 	case "$http_status" in
