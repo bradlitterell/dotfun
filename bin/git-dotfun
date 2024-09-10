@@ -34,7 +34,6 @@ function __funrun()
 	local where="$HOME/src/home/dotfun/bin"
 	local cmd="$where/$what"
 
-	set -x
 	if [ -f "$where/git-$what" ]; then
 		cmd="$where/git-$what"
 	fi

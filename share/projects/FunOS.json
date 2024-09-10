@@ -5,6 +5,10 @@
     "BuildVerbosityFormat": "2Vl=1",
     "BuildQuietFormat": "1dq",
     "BuildCommand": "make -j%NCPU% MACHINE=%TARGET% SIGN=1",
+    "BuildStyles":
+    {
+        "issu": "ISSU_XDATA=1"
+    },
     "CleanCommand": "make clean",
     "BuildDirectory": "./build",
     "TagPrefix": "bld_",
@@ -14,5 +18,9 @@
         "rich": "funos-%TARGET%",
         "stripped": "funos-%TARGET%.stripped",
         "signed": "funos-%TARGET%.signed"
-    }
+    },
+    "Dependencies":
+    [
+        "FunSDK-small"
+    ]
 }

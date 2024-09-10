@@ -23,8 +23,8 @@ git-funfetti [options] CHIP [-- [BOOT-ARG BOOT-ARG ...]]
 
 Fun-on-demand driver which automates the process of building a DPU firmware \
 bundle for the specified CHIP with the firmware components specified by the \
-user. The following FIRMWAREs may be given as arguments to the f,firmware \
-option:
+user. The following firmwares are supported and may be given as arguments to \
+the f,firmware option:
 
     FunOS          The main FunOS image
     FunSDK-small   The minimal FunOS SDK required to build FunOS
@@ -39,7 +39,7 @@ p,platform option:
     emu       The Palladium FPGA platform
 
 Images may be built as different variants, and by default, the debug variants \
-are built. The following VARIANTs may be given as arguments to the v,variant \
+are built. The following VARIANTs may be given as arguments to the V,variant \
 option:
 
     release      Omits virtually all debugging functionality
@@ -52,23 +52,28 @@ $(CLI.get_stuckopt_blurb)
 f,firmware=FIRMWARE[@BASE]   A firmware image to build. This may be specified \
 multiple times, in which case several images are built and deployed to \
 fun-on-demand. If a BASE is included in the argument, that ref of the project \
-is used as the merge base, otherwise the default branch is used as the merge \
-base. Firmwares are built in the order specified on the command line
+is used as the merge base, otherwise the tag in the TAG-COLLECTION is used
 
-b,branch=FIRMWARE:BRANCH-NAME A branch to merge into FIRMWARE before building. \
+b,merge-branch=FIRMWARE:BRANCH-NAME \
+                             A branch to merge into FIRMWARE before building. \
 This option may be specified multiple times, in which case the branches are \
-merged in the order specified
+merged in the order specified. The magic value GIT_BRANCH may be given to \
+indicate refer to the currently checked-out branch in the working git \
+repository
 
-T,shared-base-tag=BASE-TAG    Use BASE-TAG as the merge base for all firmware \
-builds. This is useful if all projects are aligned on tag numbers. This option \
-will only affect firmwares which did not explicitly specify a base tag
+t,tag-collection=TAG-COLLECTION \
+                             A file containing a JSON dictionary which maps \
+firmwares to tag names. This can be thought of as a release manifest. When the \
+dependencies for a firmware are discovered, the tags from this collection are \
+used. If not provided, the base tag of the working git repository is assumed \
+to be a valid tag for each project in the assembly and used as the base
 
-F,current-firmware            Infer the firmware, branch, and base tag to use \
-from the current git repository. The firmware name is derived from the base \
-name of the repository remote URL, the branch is inferred from the currently \
-checked out branch, and the base tag is derived from the first ancestor tag of \
-the current branch and is used as though it was given to the T,shared-base-tag \
-option
+s,build-style=FIRMWARE:BUILD-STYLE \
+                             Use the additional build options for BUILD-STYLE \
+when building FIRMWARE. The project specification for FIRMWARE must define a \
+BuildStyle corresponding to BUILD-STYLE. This option may be specified multiple \
+times to set a build style for each firmware. If multiple BUILD-STYLEs are \
+given for a single FIRMWARE, the one used is undefined
 
 p,platform=PLATFORM           The platform to build for. If unspecified, \
 images are built for physical SoC targets
@@ -90,9 +95,10 @@ $(CLI.get_global_blurb)
 
 O_FIRMWARES=()
 O_BRANCHES=()
+O_TAG_COLLECTION=
+O_STYLES=()
 O_PLATFORM=
 O_VARIANT=
-O_SHARED_BASE_TAG=latest
 O_HOST=
 O_EMAIL_ADDRESSES=(
 	"placeholder"
@@ -124,6 +130,35 @@ function derive_machine()
 	esac
 
 	echo "${chip}${p_suffix}${v_suffix}"
+}
+
+function synthesize_tag_collection()
+{
+	local f=$(CLI.get_run_state_path "tags")
+	local t=
+	local pd=
+
+	t=$(Git.get_base_tag)
+	CLI.die_ifz "$t" "cannot determine base tag from repo"
+
+	pd=$(Module.find_employer_resource "share/projects")
+	CLI.die_ifz "$pd" "no fungible project specifications found"
+
+	Plist.init_with_raw "json" '{}'
+
+	# Just go through every project we have a specification for and set its base
+	# tag to be that of the repository. The nightly Jenkins builds should
+	# produce aligned tags.
+	for p in $(ls "$pd"); do
+		local pn=
+
+		pn=$(basename -s '.json' "$p")
+		Plist.set_value "$pn" "string" "$t"
+	done
+
+	CLI.status "writing synthesized tag collection to: $f"
+	Plist.write "$f"
+	echo "$f"
 }
 
 # MARK: Command Implementation
@@ -159,7 +194,7 @@ function __cmd()
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
-	Assembly.init "$target" "${O_FIRMWARES[@]}"
+	Assembly.init "$target" "$O_TAG_COLLECTION" "${O_FIRMWARES[@]}"
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
@@ -172,6 +207,13 @@ function __cmd()
 		local b=${O_BRANCHES[$(( i + 1 ))]}
 
 		Assembly.merge_branch "$fw" "$b"
+	done
+
+	for (( i = 0; i < ${#O_STYLES[@]}; i += 2 )); do
+		local fw=${O_STYLES[$(( i + 0 ))]}
+		local s=${O_STYLES[$(( i + 1 ))]}
+
+		Assembly.set_build_style "$fw" "$s"
 	done
 
 	Assembly.assemble
@@ -198,6 +240,9 @@ function __cmd()
 function __main()
 {
 	local me="$(basename ${BASH_SOURCE[0]})"
+	local p=
+	local base=
+	local branch=
 	local email=
 
 	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
@@ -212,17 +257,18 @@ function __main()
 		local fw=
 		local fwat=
 		local fwb=
+		local fws=
 
 		case "$1" in
 		-f | --firmware=*)
 			arg_opt=($(CLI.split_specifier_nospace '@' "$arg"))
 			fw="${arg_opt[0]}"
-			fwat="$(initdefault "${arg_opt[1]}" "infer")"
+			fwat="$(initdefault "${arg_opt[1]}" "collection")"
 
 			O_FIRMWARES+=("$fw" "$fwat")
 			shift
 			;;
-		-b | --branch=*)
+		-b | --merge-branch=*)
 			arg_opt=($(CLI.split_specifier_nospace ':' "$arg"))
 			fw="${arg_opt[0]}"
 			fwb="${arg_opt[1]}"
@@ -231,18 +277,17 @@ function __main()
 			O_BRANCHES+=("$fw" "$fwb")
 			shift
 			;;
-		-T | --shared-base-tag=*)
-			O_SHARED_BASE_TAG="$arg"
+		-t | --tag-collection=*)
+			O_TAG_COLLECTION="$arg"
 			shift
 			;;
-		-F | --current-firmware)
-			fw="$(Git.get_name)"
-			fwat="$(Git.get_branch_base)"
-			fwb="$(Git.get_current_branch)"
+		-s | --build-style=*)
+			arg_opt=($(CLI.split_specifier_nospace ':' "$arg"))
+			fw="${arg_opt[0]}"
+			fws="${arg_opt[1]}"
+			CLI.die_ifz "$fws" "invalid style specifier: $arg"
 
-			O_FIRMWARES+=("$fw" "$fwat")
-			O_BRANCHES+=("$fw" "$fwb")
-			O_SHARED_BASE_TAG="$fwat"
+			O_STYLES+=("$fw" "$fws")
 			shift
 			;;
 		-p | --platform=*)
@@ -282,6 +327,19 @@ function __main()
 	done
 
 	CLI.init_git
+	if [ -z "$O_TAG_COLLECTION" ]; then
+		O_TAG_COLLECTION=$(synthesize_tag_collection)
+	fi
+
+	# Implicitly add the currently-active git repository's branch to the
+	# firmware list. If the user provides the firmware with a different base
+	# tag, then the Assembly will automatically update itself, so we don't need
+	# to do anything special to catch that case.
+	p=$(Git.get_name)
+	branch=$(Git.get_current_branch)
+
+	O_FIRMWARES+=("$p" "collection")
+	O_BRANCHES+=("$p" "$branch")
 
 	email=$(Git.run config user.email)
 	CLI.die_ifz "$email" "no email address in git config"
@@ -292,19 +350,11 @@ function __main()
 	if [ -z "$O_HOST" ]; then
 		local x=
 
+		# fun-on-demand-02 is a cursed machine and doesn't have Python3.
 		x=$(od -An -tu2 -N2 /dev/urandom | tr -d ' ')
-		x=$(( (x % 2) + 1 ))
+		x=$(( (x % 1) + 1 ))
 		O_HOST=$x
 	fi
-
-	for (( i = 0; i < ${#O_FIRMWARES[@]}; i += 2 )); do
-		local fw=${O_FIRMWARES[$(( i + 0 ))]}
-		local fwat=${O_FIRMWARES[$(( i + 1 ))]}
-
-		if [ "$fwat" = "infer" ]; then
-			O_FIRMWARES[$(( i + 1 ))]="$O_SHARED_BASE_TAG"
-		fi
-	done
 
 	O_HOST=$(printf '%02d' "$O_HOST")
 	O_HOST="fun-on-demand-$O_HOST"
@@ -313,7 +363,10 @@ function __main()
 		CLI.die "must provide a chip"
 	fi
 
-	O_CHIP="$1"
+	# FunOS builds don't normalize the chip when producing artifacts, which can
+	# be a pain on case-insensitive filesystems. So Squash the input chip to
+	# lower-case.
+	O_CHIP="$(tolower $1)"
 	shift
 
 	if [ "$1" == "--" ]; then

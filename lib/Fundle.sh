@@ -33,6 +33,7 @@ F_FUNDLE_IMGDIR=
 F_FUNDLE_IMGSRC=
 F_FUNDLE_BOOT_ARGS=()
 F_FUNDLE_EMAILS=()
+F_FUNDLE_DURATION=10
 F_FUNDLE_AR=
 
 # MARK: Internal
@@ -45,7 +46,6 @@ function Fundle._scriptify()
 	local v_map=(
 		"AR_BASE" "${F_FUNDLE_NAME}"
 		"AR" "${F_FUNDLE_NAME}.tar.gz"
-		"CHIP" "$F_FUNDLE_CHIP"
 		"FLAVOR" "$flavor"
 	)
 	local i=0
@@ -82,7 +82,7 @@ function Fundle.init()
 
 	F_FUNDLE_BUG_ID="$bug_id"
 	F_FUNDLE_BRANCH="$branch"
-	F_FUNDLE_CHIP="$chip"
+	F_FUNDLE_CHIP="$(toupper "$chip")"
 	F_FUNDLE_IMGSRC="$imgroot"
 	F_FUNDLE_IMGDIR="$bundle/images"
 	F_FUNDLE_PATH="$bundle"
@@ -120,23 +120,64 @@ function Fundle.set_email()
 	F_FUNDLE_EMAILS+=("$em")
 }
 
+function Fundle.set_duration()
+{
+	local d="$1"
+	F_FUNDLE_DURATION="$d"
+}
+
 function Fundle.package()
 {
 	local which="$1"
 	local boot_args="$F_FUNDLE_PATH/boot_args.txt"
 	local emails="$F_FUNDLE_PATH/emails.txt"
+	local params="$F_FUNDLE_PATH/test.params"
+	local boot_args_param=
+	local emails_param=
+	local sep=
+	# RUN_TARGET is where the job should run, and it can refer to an actual
+	# piece of silicon or an emulation environment like "palladium". HW_MODEL is
+	# the product enclosure, which can also be an actual piece of silicon like
+	# "S2F1" or "F1Network". If it's just a chip, it indicates that the target
+	# is a random enclosure that has that chip in it. For these purposes, we'll
+	# just always make them the same.
+	local params_map=(
+		"NAME" "$F_FUNDLE_NAME"
+		"AT" "skip"
+		"HW_MODEL" "$F_FUNDLE_CHIP"
+		"PRIORITY" "normal_priority"
+		"RUN_TARGET" "$F_FUNDLE_CHIP"
+		"MAX_DURATION" "$F_FUNDLE_DURATION"
+		"RUN_MODE" "Batch"
+	)
 	local script=
 	local ar="$(CLI.get_run_state_path "${F_FUNDLE_NAME}.tar.gz")"
 	local v_arg=$(CLI.get_verbosity_opt "v")
 
 	cp_clone -R "$F_FUNDLE_IMGSRC/" "$F_FUNDLE_IMGDIR/"
 
+	sep=
 	for ba in ${F_FUNDLE_BOOT_ARGS[@]}; do
 		echo "$ba" >> "$boot_args"
+		boot_args_param+="${sep}$ba"
+		sep=' '
 	done
 
+	sep=
 	for em in ${F_FUNDLE_EMAILS[@]}; do
 		echo "$em" >> "$emails"
+		emails_param+="${sep}$em"
+		sep=','
+	done
+
+	params_map+=("BOOTARGS" "$boot_args_param")
+	params_map+=("EXTRA_EMAIL" "$emails_param")
+
+	for (( i = 0; i < ${#params_map[@]}; i += 2 )); do
+		local k="${params_map[$(( $i + 0 ))]}"
+		local v="${params_map[$(( $i + 1 ))]}"
+
+		echo "$k : $v" >> "$params"
 	done
 
 	echo "$F_FUNDLE_BUG_ID" > "$F_FUNDLE_PATH/bug.txt"
@@ -163,5 +204,6 @@ function Fundle.submit()
 	job=$(strip_prefix "$job" 'Enqueued as job ')
 	job=$(grep -oE '^[0-9]+' <<< "$job")
 
+	CLI.die_ifz "$job" "job submission failed"
 	echo "http://palladium-jobs.fungible.local/job/$job"
 }
