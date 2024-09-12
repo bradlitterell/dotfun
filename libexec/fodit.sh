@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -O extglob
 
 set -e
 SET_MINUS_X='%SET_MINUS_X%'

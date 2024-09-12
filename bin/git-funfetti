@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -O extglob
 
 # Executable preamble
 mydir="$(dirname $0)"
@@ -16,6 +16,7 @@ libdir="${dotfiles}/lib"
 . "${libdir}/Branch.sh"
 . "${libdir}/Assembly.sh"
 . "${funlib}/Fundle.sh"
+. "${funlib}/FunDotParams.sh"
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\
@@ -68,6 +69,19 @@ dependencies for a firmware are discovered, the tags from this collection are \
 used. If not provided, the base tag of the working git repository is assumed \
 to be a valid tag for each project in the assembly and used as the base
 
+P,parameters=DOT-PARAMS-FILE \
+                             Perform the build and test according to the \
+parameters in DOT-PARAMS-FILE. If email addresses and boot-args are specified \
+at the command line, they will be appended to the values from DOT-PARAMS-FILE. \
+Other command line-supplied values will override those of the DOT-PARAMS-FILE
+
+B,build-cycle=full|iterative|skip \
+                             The type of build cycle to execute. A 'full' \
+build will perform the project's clean command and a 'git clean' of the \
+repository before building. An 'iterative' build will not perform either of \
+these operations before building. A 'skip' cycle will not perform any build \
+commands at all, and it expects the necessary artifacts to already exist
+
 s,build-style=FIRMWARE:BUILD-STYLE \
                              Use the additional build options for BUILD-STYLE \
 when building FIRMWARE. The project specification for FIRMWARE must define a \
@@ -85,10 +99,8 @@ for operations. If unspecified, one is chosen at random
 
 m,email-address=EMAIL-ADDRESS Add EMAIL-ADDRESS to the list of email addresses \
 that should receive status updates for the job. This can be specified multiple \
-times. By default, the email address in the user.email gitconfig(7) variable \
-be included
-
-B,boot-args=BOOT-ARGS-FILE    A file containing one BOOT-ARG per line
+times. The email address in the user.email gitconfig(7) variable of the \
+working repository is included implicitly
 
 $(CLI.get_global_blurb)
 "
@@ -96,14 +108,13 @@ $(CLI.get_global_blurb)
 O_FIRMWARES=()
 O_BRANCHES=()
 O_TAG_COLLECTION=
+O_PARAMETERS=
+O_BUILD_CYCLE=
 O_STYLES=()
 O_PLATFORM=
 O_VARIANT=
 O_HOST=
-O_EMAIL_ADDRESSES=(
-	"placeholder"
-)
-O_BOOT_ARGS_FILE=
+O_EMAIL_ADDRESSES=()
 O_CHIP=
 
 # MARK: Utilities
@@ -161,15 +172,43 @@ function synthesize_tag_collection()
 	echo "$f"
 }
 
+function init_assembly()
+{
+	local target=
+	local variant=
+	local cflags=
+
+	# Parameter files have build stuff in them too, so ingest those parameters
+	# to set up the assembly. We need to know the variant in order to give the
+	# assembly the right target.
+	if [ -n "$O_PARAMETERS" ]; then
+		FunDotParams.init_with_file "$O_PARAMETERS"
+		variant=$(FunDotParams.get_value "BLD_TYPE")
+		if [ -n "$variant" ]; then
+			O_VARIANT="$variant"
+		fi
+
+		cflags=$(FunDotParams.get_value "FUNOS_MAKEFLAGS")
+	fi
+
+	target=$(derive_machine)
+	Assembly.init "$target" "$O_TAG_COLLECTION" "${O_FIRMWARES[@]}"
+
+	if [ -n "$cflags" ]; then
+		# If the assembly isn't building FunOS, then this won't do anything.
+		Assembly.add_cflags "FunOS" "$cflags"
+	fi
+}
+
 # MARK: Command Implementation
 function __cmd()
 {
 	local v_arg=$(CLI.get_verbosity_opt "v")
-	local target=$(derive_machine)
 	local pvmap=(
 		"CHIP" "$O_CHIP"
 	)
 	local i=0
+	local email=
 	local imgroot=
 	local bug_id=
 	local js=
@@ -194,7 +233,7 @@ function __cmd()
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
-	Assembly.init "$target" "$O_TAG_COLLECTION" "${O_FIRMWARES[@]}"
+	init_assembly
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
@@ -216,21 +255,26 @@ function __cmd()
 		Assembly.set_build_style "$fw" "$s"
 	done
 
+	if [ -n "$O_BUILD_CYCLE" ]; then
+		Assembly.set_build_cycle "$O_BUILD_CYCLE"
+	fi
+
 	Assembly.assemble
 	CLI.die_check $? "DPU assembly failed"
 
 	imgroot=$(Assembly.get_image_root)
-	Fundle.init "$bug_id" "$branch" "$O_CHIP" "$imgroot"
-	if [ -n "$O_BOOT_ARGS_FILE" ]; then
-		Fundle.set_boot_arg_file "$O_BOOT_ARGS_FILE"
+	email=$(Git.run config user.email)
+	Fundle.init "$bug_id" "$branch" "$O_CHIP" "$imgroot" "$email"
+	if [ -n "$O_PARAMETERS" ]; then
+		Fundle.set_params "$O_PARAMETERS"
 	fi
 
 	for em in "${O_EMAIL_ADDRESSES[@]}"; do
-		Fundle.set_email "$em"
+		Fundle.add_email "$em"
 	done
 
 	for ba in "$@"; do
-		Fundle.set_boot_arg "$ba"
+		Fundle.add_boot_arg "$ba"
 	done
 
 	Fundle.package "signed"
@@ -243,7 +287,6 @@ function __main()
 	local p=
 	local base=
 	local branch=
-	local email=
 
 	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
 	eval "$(echo "$GIT_PARSEOPT_SPEC" |
@@ -281,6 +324,22 @@ function __main()
 			O_TAG_COLLECTION="$arg"
 			shift
 			;;
+		-P | --parameters=*)
+			O_PARAMETERS="$arg"
+			shift
+			;;
+		-B | --build-cycle=*)
+			case "$arg" in
+			full|iterative|skip)
+				O_BUILD_CYCLE="$arg"
+				;;
+			*)
+				CLI.die_badopt "$arg" "build cycle"
+				;;
+			esac
+
+			shift
+			;;
 		-s | --build-style=*)
 			arg_opt=($(CLI.split_specifier_nospace ':' "$arg"))
 			fw="${arg_opt[0]}"
@@ -304,10 +363,6 @@ function __main()
 			;;
 		-m | --email-address=*)
 			O_EMAIL_ADDRESSES+=("$arg")
-			shift
-			;;
-		-B | --boot-args=*)
-			O_BOOT_ARGS_FILE="$arg"
 			shift
 			;;
 		--)
@@ -341,16 +396,11 @@ function __main()
 	O_FIRMWARES+=("$p" "collection")
 	O_BRANCHES+=("$p" "$branch")
 
-	email=$(Git.run config user.email)
-	CLI.die_ifz "$email" "no email address in git config"
-
-	# Always include the user's email address first.
-	O_EMAIL_ADDRESSES[0]="$email"
-
 	if [ -z "$O_HOST" ]; then
 		local x=
 
-		# fun-on-demand-02 is a cursed machine and doesn't have Python3.
+		# fun-on-demand-02 runs CentOS and is only used for performance testing,
+		# so exclude it from our selection.
 		x=$(od -An -tu2 -N2 /dev/urandom | tr -d ' ')
 		x=$(( (x % 1) + 1 ))
 		O_HOST=$x

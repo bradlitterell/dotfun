@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -O extglob
 
 # MARK: Module preamble
 # Executables must initialize the $sharedir variable based on their own
