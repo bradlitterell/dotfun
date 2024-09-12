@@ -152,7 +152,7 @@ function synthesize_tag_collection()
 	t=$(Git.get_base_tag)
 	CLI.die_ifz "$t" "cannot determine base tag from repo"
 
-	pd=$(Module.find_employer_resource "share/projects")
+	pd=$(Module.find_resource "share/funproj")
 	CLI.die_ifz "$pd" "no fungible project specifications found"
 
 	Plist.init_with_raw "json" '{}'
@@ -384,6 +384,7 @@ function __main()
 	CLI.init_git
 	if [ -z "$O_TAG_COLLECTION" ]; then
 		O_TAG_COLLECTION=$(synthesize_tag_collection)
+		CLI.die_ifz "$O_TAG_COLLECTION" "failed to synthesize tag collection"
 	fi
 
 	# Implicitly add the currently-active git repository's branch to the
