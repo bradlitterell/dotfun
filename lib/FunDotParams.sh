@@ -193,6 +193,7 @@ function FunDotParams.write()
 
 	# Don't write out if we're missing required parameters.
 	FunDotParams._assert_required
+	Module.config 0 "FunDotParams [write]"
 
 	for (( i = 0; i < ${#F_FUNDOTPARAMS_PARAMS[@]}; i += 2 )); do
 		local ki=${F_FUNDOTPARAMS_PARAMS[$(( i + 0 ))]}
@@ -200,6 +201,7 @@ function FunDotParams.write()
 
 		# Refuse to write out blank parameters.
 		CLI.die_ifz "$vi" "invalid value for param: $ki"
+		Module.config 1 "$k" "$v"
 		echo "$ki : $vi" >> "$f"
 	done
 }

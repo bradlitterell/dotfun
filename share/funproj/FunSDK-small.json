@@ -1,10 +1,13 @@
 {
     "Name": "FunSDK-small",
     "URL": "fungible://FunSDK-small",
-    "BuildTool": "make",
     "BuildVerbosityFormat": "dV",
     "BuildCommand": "./scripts/bob --sdkup",
     "CleanCommand": "./scripts/bob --clean-all",
+    "BuildStyles":
+    {
+        "azure": "--azure-az"
+    },
     "TagPrefix": "bld_",
     "Exports":
     {
