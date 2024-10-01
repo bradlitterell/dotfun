@@ -20,10 +20,10 @@ libdir="${dotfiles}/lib"
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\
-git-funfetti [options] CHIP [-- [BOOT-ARG BOOT-ARG ...]]
+git-funfetti [options] PRODUCT [-- [BOOT-ARG BOOT-ARG ...]]
 
 Fun-on-demand driver which automates the process of building a DPU firmware \
-bundle for the specified CHIP with the firmware components specified by the \
+bundle for the specified PRODUCT with the firmware components specified by the \
 user. The following firmwares are supported and may be given as arguments to \
 the f,firmware option:
 
@@ -31,8 +31,8 @@ the f,firmware option:
     FunSDK-small   The minimal FunOS SDK required to build FunOS
 
 Firmwares may be built for different platforms, and by default they are built \
-for physical SoCs. The following PLATFORMs may be given as arguments to the \
-p,platform option:
+for the platform associated with PRODUCT. The following PLATFORMs may be given \
+as arguments to the p,platform option to override this:
 
     soc       The physical SoC target
     posix     The POSIX simulator target
@@ -89,8 +89,9 @@ BuildStyle corresponding to BUILD-STYLE. This option may be specified multiple \
 times to set a build style for each firmware. If multiple BUILD-STYLEs are \
 given for a single FIRMWARE, the one used is undefined
 
-p,platform=PLATFORM           The platform to build for. If unspecified, \
-images are built for physical SoC targets
+p,platform=PLATFORM           The platform to build for. If specified, this \
+overrides the platform present in the machine specification associated with \
+the PRODUCT
 
 V,variant=VARIANT             The variant to build
 
@@ -115,28 +116,28 @@ O_PLATFORM=
 O_VARIANT=
 O_HOST=
 O_EMAIL_ADDRESSES=()
-O_CHIP=
+O_PRODUCT=
 
 # MARK: Utilities
 function derive_machine()
 {
-	local chip="$O_CHIP"
+	local chip="$1"
 	local p_suffix=
 	local v_suffix=
 
-	if [ -n "$O_PLATFORM" ]; then
-		p_suffix="$O_PLATFORM"
-	fi
+	case "$O_PLATFORM" in
+	soc)
+		;;
+	posix|emu|qemu)
+		p_suffix="-$O_PLATFORM"
+		;;
+	esac
 
 	case "$O_VARIANT" in
-	release)
-		v_suffix="-release"
-		;;
-	noasan)
-		v_suffix="-noasan"
+	release|noasan)
+		v_suffix="-$O_VARIANT"
 		;;
 	debug)
-		v_suffix=
 		;;
 	esac
 
@@ -174,6 +175,7 @@ function synthesize_tag_collection()
 
 function init_assembly()
 {
+	local chip="$1"
 	local pd="share/funproj"
 	local target=
 	local variant=
@@ -192,7 +194,7 @@ function init_assembly()
 		cflags=$(FunDotParams.get_value "FUNOS_MAKEFLAGS")
 	fi
 
-	target=$(derive_machine)
+	target=$(derive_machine "$chip")
 	Assembly.init "$target" "$O_TAG_COLLECTION" "$pd" "${O_FIRMWARES[@]}"
 
 	if [ -n "$cflags" ]; then
@@ -205,9 +207,11 @@ function init_assembly()
 function __cmd()
 {
 	local v_arg=$(CLI.get_verbosity_opt "v")
-	local pvmap=(
-		"CHIP" "$O_CHIP"
-	)
+	local md=
+	local m=
+	local m_platform=
+	local chip=
+	local pvmap=()
 	local i=0
 	local email=
 	local imgroot=
@@ -228,13 +232,41 @@ function __cmd()
 		CLI.die_check $? "authentication failed: $O_HOST"
 	fi
 
+	md=$(Fundle.get_model_descriptor "$O_PRODUCT")
+	CLI.die_ifz "$md" "failed to get machine descriptor: $O_PRODUCT"
+	CLI.debug "machine descriptor: $O_PRODUCT => $md"
+	
+	Plist.init_with_raw "json" "$md"
+	m=$(Plist.get_value "machine_targets" "string")
+	CLI.die_ifz "$m" "failed to query machine target from: $md"
+
+	# The hardware model is case-sensitive on the run_f1 side, but we let the
+	# user specify any case they want, so re-normalize it based on what's in the
+	# descriptor.
+	O_PRODUCT=$(Plist.get_value "hardware_model" "string")
+
+	# Find the chip and platform from the machine.
+	chip=${m%-*}
+	pvmap+=("CHIP" "$chip")
+
+	m_platform=${machine#*-}
+	if [ -z "$m_platform" ]; then
+		m_platform="soc"
+	fi
+
+	if [ -z "$O_PLATFORM" ]; then
+		# If a platform was provided on the command line, it wins. Otherwise,
+		# derive it from the machine.
+		O_PLATFORM="$m_platform"
+	fi
+
 	bug_id=$(Branch.guess_primary_problem)
 	CLI.die_ifz "$bug_id" "failed to guess branch problem"
 
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
-	init_assembly
+	init_assembly "$chip"
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
@@ -265,7 +297,7 @@ function __cmd()
 
 	imgroot=$(Assembly.get_image_root)
 	email=$(Git.run config user.email)
-	Fundle.init "$bug_id" "$branch" "$O_CHIP" "$imgroot" "$email"
+	Fundle.init "$bug_id" "$branch" "$O_PRODUCT" "$chip" "$imgroot" "$email"
 	if [ -n "$O_PARAMETERS" ]; then
 		Fundle.set_params "$O_PARAMETERS"
 	fi
@@ -415,10 +447,7 @@ function __main()
 		CLI.die "must provide a chip"
 	fi
 
-	# FunOS builds don't normalize the chip when producing artifacts, which can
-	# be a pain on case-insensitive filesystems. So Squash the input chip to
-	# lower-case.
-	O_CHIP="$(tolower $1)"
+	O_PRODUCT="$1"
 	shift
 
 	if [ "$1" == "--" ]; then

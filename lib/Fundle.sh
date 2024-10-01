@@ -22,10 +22,15 @@ fi
 # MARK: Imports
 . "${libdir}/Lib.sh"
 . "${libdir}/Module.sh"
+. "${libdir}/Plist.sh"
+
+# MARK: Globals
+G_FUNDLE_HWMODELS_URL="http://fun-on-demand-01:9004/hardware_models"
 
 # MARK: Object Fields
 F_FUNDLE_BUG_ID=
 F_FUNDLE_BRANCH=
+F_FUNDLE_PRODUCT=
 F_FUNDLE_CHIP=
 F_FUNDLE_PATH=
 F_FUNDLE_NAME=
@@ -69,14 +74,78 @@ function Fundle._scriptify()
 	echo "$text"
 }
 
+# MARK: Meta
+function Fundle.run_f1()
+{
+	local host="$1"
+	local rf1=$(CLI.get_boot_state_path "run_f1.py")
+	local v_arg=$(CLI.get_verbosity_opt "dv")
+
+	if [ ! -f "$rf1" ]; then
+		CLI.command scp $v_arg "$host":/home/robotpal/bin/run_f1.py "$rf1"	
+		CLI.die_check $? "copy run_f1"
+
+		CLI.command chmod u+x "$rf1"
+		CLI.die_check $? "make run_f1 executable"
+	fi
+
+	shift
+	CLI.command $rf1 "$@"
+}
+
+function Fundle.get_model_descriptor()
+{
+	local p="$1"
+	local p_squish=$(tolower "$p")
+	local http_code=
+	local js=$(CLI.get_run_state_path "json")
+	local m_cnt=
+	local i=
+
+	http_code=$(CLI.command curl -s -w '%{response_code}' -o "$js" -X GET \
+			-H "Accept: application/json" \
+			-H "Content-Type: application/json" \
+			"$G_FUNDLE_HWMODELS_URL")
+	CLI.debug "got response code: $http_code"
+
+	case "$http_code" in
+	200)
+		Plist.init_with_file "$js"
+		m_cnt=$(Plist.get_count "hardware_models")
+
+		for (( i = 0; i < m_cnt; i++ )); do
+			local k_path="hardware_models.$i"
+			local v=
+			local v_squish=
+			local m=
+
+			v=$(Plist.get_value "${k_path}.hardware_model" "string")
+			CLI.die_ifz "$v" "failed to query hardware model: $k_path"
+
+			v_squish=$(tolower "$v")
+			if [ "$v_squish" != "$p_squish" ]; then
+				continue
+			fi
+
+			echo "$(Plist.get_value_json "$k_path" "dictionary")"
+			break
+		done
+		;;
+	*)
+		CLI.err "request failed: $http_code"
+		;;
+	esac
+}
+
 # MARK: Public
 function Fundle.init()
 {
 	local bug_id="$1"
 	local branch="$2"
-	local chip="$3"
-	local imgroot="$4"
-	local email="$5"
+	local product="$3"
+	local chip="$4"
+	local imgroot="$5"
+	local email="$6"
 	local bundle=
 
 	# Make the bundle name slightly friendlier to shells.
@@ -85,6 +154,7 @@ function Fundle.init()
 
 	F_FUNDLE_BUG_ID="$bug_id"
 	F_FUNDLE_BRANCH="$branch"
+	F_FUNDLE_PRODUCT="$product"
 	F_FUNDLE_CHIP="$(toupper "$chip")"
 	F_FUNDLE_IMGSRC="$imgroot"
 	F_FUNDLE_IMGDIR="$bundle/images"
@@ -95,6 +165,7 @@ function Fundle.init()
 	Module.config 1 "name" "$F_FUNDLE_NAME"
 	Module.config 1 "bug id" "$F_FUNDLE_BUG_ID"
 	Module.config 1 "branch" "$F_FUNDLE_BRANCH"
+	Module.config 1 "product" "$F_FUNDLE_PRODUCT"
 	Module.config 1 "chip" "$F_FUNDLE_CHIP"
 	Module.config 1 "image source" "$F_FUNDLE_IMGSRC"
 	Module.config 1 "image directory" "$F_FUNDLE_IMGDIR"
@@ -144,11 +215,14 @@ function Fundle.package()
 		FunDotParams.init_with_file "$F_FUNDLE_PARAMS"
 
 		FunDotParams.set_value "NAME" "$F_FUNDLE_NAME"
-		FunDotParams.set_value "HW_MODEL" "$F_FUNDLE_CHIP"
+		FunDotParams.set_value "HW_MODEL" "$F_FUNDLE_PRODUCT"
 		FunDotParams.set_value "RUN_TARGET" "$F_FUNDLE_CHIP"
 		FunDotParams.append_value "EXTRA_EMAIL" "$F_FUNDLE_EMAIL" ","
 	else
-		FunDotParams.init "$F_FUNDLE_NAME" "$F_FUNDLE_CHIP" "$F_FUNDLE_EMAIL"
+		FunDotParams.init "$F_FUNDLE_NAME" \
+				"$F_FUNDLE_PRODUCT" \
+				"$F_FUNDLE_CHIP" \
+				"$F_FUNDLE_EMAIL"
 	fi
 
 	if [ -n "$F_FUNDLE_DURATION" ]; then

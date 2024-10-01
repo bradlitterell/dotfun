@@ -62,8 +62,9 @@ function FunDotParams._assert_required()
 function FunDotParams.init()
 {
 	local name="$1"
-	local chip="$2"
-	local email="$3"
+	local product="$2"
+	local chip="$3"
+	local email="$4"
 	local i=0
 
 	F_FUNDOTPARAMS_PARAMS=()
@@ -75,13 +76,13 @@ function FunDotParams.init()
 	done
 
 	FunDotParams.set_value "NAME" "$name"
-	FunDotParams.set_value "HW_MODEL" "$chip"
+	FunDotParams.set_value "HW_MODEL" "$product"
 	FunDotParams.set_value "RUN_TARGET" "$chip"
 	FunDotParams.set_value "EXTRA_EMAIL" "$email"
 
 	Module.config 0 "FunDotParams"
 	Module.config 1 "name" "$name"
-	Module.config 1 "hw model" "$chip"
+	Module.config 1 "hw model" "$product"
 	Module.config 1 "run target" "$chip"
 	Module.config 1 "creator" "$email"
 }
@@ -201,7 +202,7 @@ function FunDotParams.write()
 
 		# Refuse to write out blank parameters.
 		CLI.die_ifz "$vi" "invalid value for param: $ki"
-		Module.config 1 "$k" "$v"
+		Module.config 1 "$ki" "$vi"
 		echo "$ki : $vi" >> "$f"
 	done
 }
