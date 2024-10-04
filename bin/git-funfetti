@@ -173,9 +173,38 @@ function synthesize_tag_collection()
 	echo "$f"
 }
 
+function assembly_callback()
+{
+	local type="$1"
+	local p="$2"
+
+	CLI.status "got assembly callback: type = $type, project = $p"
+
+	case "$type" in
+	image)
+		local type="$3"
+		local img="$4"
+		local v_arg=$(CLI.get_verbosity_opt "dv")
+		local excat="bin/scripts/excat.py"
+
+		CLI.status "image callback: type = $type, img = $img"
+
+		if [ "$type" = "rich" ]; then
+			CLI.status "publishing symbols: $arg"
+
+			Assembly.run_tool "FunSDK-small" "$excat" $v_arg pub "$img"
+			CLI.die_check $? "publish symbols"
+		fi
+		;;
+	*)
+		;;
+	esac
+}
+
 function init_assembly()
 {
 	local chip="$1"
+	local cb="$2"
 	local pd="share/funproj"
 	local target=
 	local variant=
@@ -195,7 +224,7 @@ function init_assembly()
 	fi
 
 	target=$(derive_machine "$chip")
-	Assembly.init "$target" "$O_TAG_COLLECTION" "$pd" "${O_FIRMWARES[@]}"
+	Assembly.init "$target" "$O_TAG_COLLECTION" "$pd" "$cb" "${O_FIRMWARES[@]}"
 
 	if [ -n "$cflags" ]; then
 		# If the assembly isn't building FunOS, then this won't do anything.
@@ -206,7 +235,7 @@ function init_assembly()
 # MARK: Command Implementation
 function __cmd()
 {
-	local v_arg=$(CLI.get_verbosity_opt "v")
+	local v_arg=$(CLI.get_verbosity_opt "dv")
 	local md=
 	local m=
 	local m_platform=
@@ -266,7 +295,7 @@ function __cmd()
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
 
-	init_assembly "$chip"
+	init_assembly "$chip" "assembly_callback"
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
