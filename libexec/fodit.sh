@@ -29,6 +29,12 @@ if [ -z "$image" ]; then
 	exit 1
 fi
 
+# If FunTest is included in the bundle, then make sure we tell that to run_f1.
+tests=$(readlink "images/FunTest/gzip")
+if [ -n "$tests" ]; then
+	tests=" --other-image $d/images/FunTest/$tests"
+fi
+
 v_arg=
 if [ -n "$SET_MINUS_X" ]; then
 	v_arg="-v"
@@ -64,6 +70,7 @@ $whichpip install $v_arg --user requests
 run_f1='~robotpal/bin/run_f1.py'
 run_f1+=" --robot"
 run_f1+=" --params-file test.params"
+run_f1+="$tests"
 run_f1+=" $d/images/FunOS/$image"
 
 # The job identifier is written to stderr, so redirect it to stdout for capture

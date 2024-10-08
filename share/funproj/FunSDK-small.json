@@ -6,11 +6,13 @@
     "CleanCommand": "./scripts/bob --clean-all",
     "BuildStyles":
     {
-        "azure": "--azure-az"
+        "azure": "--azure",
+        "azure-az": "--azure-az"
     },
     "TagPrefix": "bld_",
     "Exports":
     {
         "SDKDIR": "%WORKSPACE%/FunSDK-small"
-    }
+    },
+    "MinimumBuildCycle": "Iterative"
 }

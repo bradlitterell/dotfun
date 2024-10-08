@@ -1,3 +1,4 @@
+# Global gitconfig for Fungible at Microsoft.
 [url "git@github.com:fungible-inc/"]
 	insteadOf = fungible://
 

@@ -1,4 +1,5 @@
-# Fungible configuration.
+# The git-config(1) that will be copied into repositories initialized via
+# 'git fix -i fungible'.
 [user]
 	name = Damien Sorresso
 	email = dsorresso@microsoft.com

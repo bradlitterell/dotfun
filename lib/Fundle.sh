@@ -199,6 +199,11 @@ function Fundle.set_duration()
 	F_FUNDLE_DURATION="$d"
 }
 
+function Fundle.get_root()
+{
+	echo "$F_FUNDLE_PATH"
+}
+
 function Fundle.package()
 {
 	local which="$1"

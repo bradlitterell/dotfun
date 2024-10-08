@@ -18,17 +18,42 @@ libdir="${dotfiles}/lib"
 . "${funlib}/Fundle.sh"
 . "${funlib}/FunDotParams.sh"
 
+# MARK: Globals
+G_ALL_ACTIONS=(
+	"__build"
+	"__master"
+	"__test"
+)
+
+# We only pick from the instances that run a Linux of some sort -- others are
+# either not up or running CentOS. Also, there is no fun-on-demand-00; the
+# cluster starts at -01.
+G_USEABLE_INSTANCES=(
+	1
+	4
+	5
+)
+
 # Parsed options
 GIT_PARSEOPT_SPEC="\
-git-funfetti [options] PRODUCT [-- [BOOT-ARG BOOT-ARG ...]]
+git-funfetti [options] ACTION PRODUCT [-- [BOOT-ARG BOOT-ARG ...]]
 
 Fun-on-demand driver which automates the process of building a DPU firmware \
 bundle for the specified PRODUCT with the firmware components specified by the \
-user. The following firmwares are supported and may be given as arguments to \
-the f,firmware option:
+user. The user may specify one of the following ACTIONs:
+
+    build          performs project builds only
+    master         builds projects and then masters the resulting images into \
+a test bundle
+    test           masters the test bundle and submits it to the Fun-on-Demand \
+service for testing
+
+The following firmwares are supported and may be given as arguments to the \
+f,firmware option:
 
     FunOS          The main FunOS image
     FunSDK-small   The minimal FunOS SDK required to build FunOS
+    FunTest        The repository where central test scripts reside
 
 Firmwares may be built for different platforms, and by default they are built \
 for the platform associated with PRODUCT. The following PLATFORMs may be given \
@@ -95,6 +120,13 @@ the PRODUCT
 
 V,variant=VARIANT             The variant to build
 
+o,output-bundle=OUTPUT-BUNDLE-PATH \
+                              Write the resulting test bundle to \
+OUTPUT-BUNDLE-PATH. This path represents the root of the bundle, not the \
+directory which contains the bundle. Any required ancestor directories are \
+created via 'mkdir -p', and the bundle will be overwritten if it already \
+exists. If unspecified, the bundle is written to a temporary location
+
 n,cluster-number=NUMBER       The specific fun-on-demand server to connect to \
 for operations. If unspecified, one is chosen at random
 
@@ -115,7 +147,11 @@ O_STYLES=()
 O_PLATFORM=
 O_VARIANT=
 O_HOST=
+O_OUTPUT_BUNDLE=
 O_EMAIL_ADDRESSES=()
+
+O_ACTION=
+O_ACTIONS=()
 O_PRODUCT=
 
 # MARK: Utilities
@@ -190,7 +226,7 @@ function assembly_callback()
 		CLI.status "image callback: type = $type, img = $img"
 
 		if [ "$type" = "rich" ]; then
-			CLI.status "publishing symbols: $arg"
+			CLI.status "publishing symbols: $img"
 
 			Assembly.run_tool "FunSDK-small" "$excat" $v_arg pub "$img"
 			CLI.die_check $? "publish symbols"
@@ -232,70 +268,43 @@ function init_assembly()
 	fi
 }
 
-# MARK: Command Implementation
-function __cmd()
+# MARK: Actions
+function __build()
 {
-	local v_arg=$(CLI.get_verbosity_opt "dv")
-	local md=
-	local m=
-	local m_platform=
-	local chip=
-	local pvmap=()
+	local chip="$1"
+	local target=
+	local variant=
+	local cflags=
+	local pvmap=(
+		"CHIP" "$chip"
+	)
 	local i=0
-	local email=
-	local imgroot=
-	local bug_id=
-	local js=
-	local branch=
 
-	# Check to see if we're set up for ssh keys on the host. Note that the
-	# configuration file sets the username to use for the fun-on-demand cluster.
-	CLI.command ssh -vn \
-			-o 'PasswordAuthentication no' \
-			-o 'BatchMode yes' \
-			"$O_HOST" 2>&1 | grep -qE '^Authenticated to'
-	if [ $? -ne 0 ]; then
-		CLI.warn "bootstrapping authentication to $O_HOST..."
+	# Parameter files have build stuff in them too, so ingest those parameters
+	# to set up the assembly. We need to know the variant in order to give the
+	# assembly the right target.
+	if [ -n "$O_PARAMETERS" ]; then
+		FunDotParams.init_with_file "$O_PARAMETERS"
+		variant=$(FunDotParams.get_value "BLD_TYPE")
+		if [ -n "$variant" ]; then
+			O_VARIANT="$variant"
+		fi
 
-		CLI.command sshauth $v_arg -k "$HOME/.ssh/id_rsa4k.pub" "$O_HOST"
-		CLI.die_check $? "authentication failed: $O_HOST"
+		cflags=$(FunDotParams.get_value "FUNOS_MAKEFLAGS")
 	fi
 
-	md=$(Fundle.get_model_descriptor "$O_PRODUCT")
-	CLI.die_ifz "$md" "failed to get machine descriptor: $O_PRODUCT"
-	CLI.debug "machine descriptor: $O_PRODUCT => $md"
-	
-	Plist.init_with_raw "json" "$md"
-	m=$(Plist.get_value "machine_targets" "string")
-	CLI.die_ifz "$m" "failed to query machine target from: $md"
+	target=$(derive_machine "$chip")
+	Assembly.init "$target" \
+			"$O_TAG_COLLECTION" \
+			"share/funproj" \
+			"assembly_callback" \
+			"${O_FIRMWARES[@]}"
 
-	# The hardware model is case-sensitive on the run_f1 side, but we let the
-	# user specify any case they want, so re-normalize it based on what's in the
-	# descriptor.
-	O_PRODUCT=$(Plist.get_value "hardware_model" "string")
-
-	# Find the chip and platform from the machine.
-	chip=${m%-*}
-	pvmap+=("CHIP" "$chip")
-
-	m_platform=${machine#*-}
-	if [ -z "$m_platform" ]; then
-		m_platform="soc"
+	if [ -n "$cflags" ]; then
+		# If the assembly isn't building FunOS, then this won't do anything.
+		Assembly.add_cflags "FunOS" "$cflags"
 	fi
 
-	if [ -z "$O_PLATFORM" ]; then
-		# If a platform was provided on the command line, it wins. Otherwise,
-		# derive it from the machine.
-		O_PLATFORM="$m_platform"
-	fi
-
-	bug_id=$(Branch.guess_primary_problem)
-	CLI.die_ifz "$bug_id" "failed to guess branch problem"
-
-	branch=$(Git.get_current_branch)
-	CLI.die_ifz "$branch" "failed to get current branch"
-
-	init_assembly "$chip" "assembly_callback"
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
 		local v="${pvmap[$(( i + 0 ))]}"
 		local vv="${pvmap[$(( i + 1 ))]}"
@@ -323,9 +332,22 @@ function __cmd()
 
 	Assembly.assemble
 	CLI.die_check $? "DPU assembly failed"
+}
 
-	imgroot=$(Assembly.get_image_root)
-	email=$(Git.run config user.email)
+function __master()
+{
+	local chip="$1"
+	local email=$(Git.run config user.email)
+	local imgroot=$(Assembly.get_image_root)
+	local bug_id=
+	local branch=
+
+	bug_id=$(Branch.guess_primary_problem)
+	CLI.die_ifz "$bug_id" "failed to guess branch problem"
+
+	branch=$(Git.get_current_branch)
+	CLI.die_ifz "$branch" "failed to get current branch"
+
 	Fundle.init "$bug_id" "$branch" "$O_PRODUCT" "$chip" "$imgroot" "$email"
 	if [ -n "$O_PARAMETERS" ]; then
 		Fundle.set_params "$O_PARAMETERS"
@@ -335,12 +357,82 @@ function __cmd()
 		Fundle.add_email "$em"
 	done
 
+	shift
 	for ba in "$@"; do
 		Fundle.add_boot_arg "$ba"
 	done
 
 	Fundle.package "signed"
+
+	if [ -n "$O_OUTPUT_BUNDLE" ]; then
+		local root=$(Fundle.get_root)
+
+		CLI.command_noerr mkdir -p "$O_OUTPUT_BUNDLE"
+		CLI.command_noerr rm -rf "$O_OUTPUT_BUNDLE"
+
+		cp_clone -R "$root" "$O_OUTPUT_BUNDLE"
+	fi
+}
+
+function __test()
+{
+	local chip="$1"
+	local v_arg=$(CLI.get_verbosity_opt "dv")
+
+	# Check to see if we're set up for ssh keys on the host. Note that the
+	# configuration file sets the username to use for the fun-on-demand cluster.
+	CLI.command ssh -vn \
+			-o 'PasswordAuthentication no' \
+			-o 'BatchMode yes' \
+			"$O_HOST" 2>&1 | grep -qE '^Authenticated to'
+	if [ $? -ne 0 ]; then
+		CLI.warn "bootstrapping authentication to $O_HOST..."
+
+		CLI.command sshauth $v_arg -k "$HOME/.ssh/id_rsa4k.pub" "$O_HOST"
+		CLI.die_check $? "authentication failed: $O_HOST"
+	fi
+
 	Fundle.submit "$O_HOST"
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local md=
+	local m=
+	local m_platform=
+	local chip=
+
+	md=$(Fundle.get_model_descriptor "$O_PRODUCT")
+	CLI.die_ifz "$md" "failed to get machine descriptor: $O_PRODUCT"
+	CLI.debug "machine descriptor: $O_PRODUCT => $md"
+
+	Plist.init_with_raw "json" "$md"
+	m=$(Plist.get_value "machine_targets" "string")
+	CLI.die_ifz "$m" "failed to query machine target from: $md"
+
+	# The hardware model is case-sensitive on the run_f1 side, but we let the
+	# user specify any case they want, so re-normalize it based on what's in the
+	# descriptor.
+	O_PRODUCT=$(Plist.get_value "hardware_model" "string")
+
+	# Find the chip and platform from the machine.
+	chip=${m%-*}
+
+	m_platform=${machine#*-}
+	if [ -z "$m_platform" ]; then
+		m_platform="soc"
+	fi
+
+	if [ -z "$O_PLATFORM" ]; then
+		# If a platform was provided on the command line, it wins. Otherwise,
+		# derive it from the machine.
+		O_PLATFORM="$m_platform"
+	fi
+
+	for a in ${O_ACTIONS[@]}; do
+		$a "$chip" "$@"
+	done
 }
 
 function __main()
@@ -349,6 +441,7 @@ function __main()
 	local p=
 	local base=
 	local branch=
+	local action_found=
 
 	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
 	eval "$(echo "$GIT_PARSEOPT_SPEC" |
@@ -419,6 +512,10 @@ function __main()
 			O_VARIANT="$arg"
 			shift
 			;;
+		-o | --output-bundle=*)
+			O_OUTPUT_BUNDLE="$arg"
+			shift
+			;;
 		-n | --cluster-number=*)
 			O_HOST="$arg"
 			shift
@@ -461,23 +558,38 @@ function __main()
 
 	if [ -z "$O_HOST" ]; then
 		local x=
+		local cnt=${#G_USEABLE_INSTANCES[@]}
 
-		# fun-on-demand-02 runs CentOS and is only used for performance testing,
-		# so exclude it from our selection.
-		x=$(od -An -tu2 -N2 /dev/urandom | tr -d ' ')
-		x=$(( (x % 1) + 1 ))
-		O_HOST=$x
+		x=$(rand 4 "u")
+		x=$(( (x % cnt) + 1 ))
+		O_HOST=${G_USEABLE_INSTANCES[$x]}
 	fi
 
 	O_HOST=$(printf '%02d' "$O_HOST")
 	O_HOST="fun-on-demand-$O_HOST"
+	CLI.status "using host: $O_HOST"
 
-	if [ $# -lt 1 -o "$1" == "--" ]; then
-		CLI.die "must provide a chip"
+	if [ $# -lt 2 -o "$1" == "--" ]; then
+		CLI.die "must provide an action and chip"
 	fi
 
-	O_PRODUCT="$1"
-	shift
+	O_ACTION="$1"
+	O_PRODUCT="$2"
+	shift 2
+
+	# Go through the list of all actions and include everything up to and
+	# including the specified action.
+	for a in ${G_ALL_ACTIONS[@]}; do
+		CLI.status "will perform action: $a"
+		O_ACTIONS+=("$a")
+
+		if [ "$a" = "__$O_ACTION" ]; then
+			action_found="$a"
+			break
+		fi
+	done
+
+	CLI.die_ifz "$action_found" "invalid action: $O_ACTION"
 
 	if [ "$1" == "--" ]; then
 		shift
