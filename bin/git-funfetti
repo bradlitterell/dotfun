@@ -561,7 +561,7 @@ function __main()
 		local cnt=${#G_USEABLE_INSTANCES[@]}
 
 		x=$(rand 4 "u")
-		x=$(( (x % cnt) + 1 ))
+		x=$(( x % cnt ))
 		O_HOST=${G_USEABLE_INSTANCES[$x]}
 	fi
 
