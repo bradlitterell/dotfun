@@ -21,5 +21,6 @@
 
 [fix "bug"]
 	tracker = FunJira
+	account = dsorresso
 	regex = [0-9]{4,}
 	trailer = Bug-Id

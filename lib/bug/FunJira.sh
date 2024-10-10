@@ -40,7 +40,6 @@ G_FUNJIRA_CONFIG="bug.FunJira"
 
 # MARK: Object Fields
 F_FUNJIRA_PROJECT=
-F_FUNJIRA_NUMBER=
 F_FUNJIRA_USERNAME=
 F_FUNJIRA_SECRETS=
 F_FUNJIRA_KEY=
@@ -101,12 +100,10 @@ function FunJira._api()
 		message=$(Plist.get_value "errorMessages.0" "string")
 		if [ -n "$message" ]; then
 			# Jira uses http status codes except when it doesn't.
-			CLI.die "api call failed with response: $r"
+			CLI.die "api call failed with response: $message: $r"
 		fi
 
-		if [ "$which" = "GET" ]; then
-			echo "$r"
-		fi
+		echo "$r"
 		;;
 	30[0-9])
 		CLI.die "unexpected redirect: $http_status"
@@ -403,100 +400,107 @@ function FunJira._translate_field()
 function FunJira.init()
 {
 	local p="$1"
-	local n="$2"
-	local username="$3"
-	local secrets="$4"
+	local username="$2"
+	local secrets="$3"
 
 	# If a prefix was provided, then strip it since we're going to get it from
 	# either the config file or bug tracker. We just want this to be a number.
 	n=$(grep -oE '[0-9]+' <<< "$n")
 
 	F_FUNJIRA_PROJECT="$p"
-	F_FUNJIRA_NUMBER="$n"
 	F_FUNJIRA_USERNAME="$username"
-	F_FUNJIRA_SECRETS="$4"
+	F_FUNJIRA_SECRETS="$secrets"
 
 	Module.config 0 "fungible jira"
 	Module.config 1 "api" "$G_FUNJIRA_API"
 	Module.config 1 "project" "$F_FUNJIRA_PROJECT"
-	Module.config 1 "number" "$F_FUNJIRA_NUMBER"
 	Module.config 1 "username" "$F_FUNJIRA_USERNAME"
 	Module.config 1 "secrets store" "$F_FUNJIRA_SECRETS"
 }
 
-function FunJira.init_tracker()
+function FunJira.init_problem()
 {
-	local js=
-	local cnt=
-	local gitdir=$(Git.check_repo)
-	local cachekey="${G_FUNJIRA_CONFIG}.key"
-	local pk=
+	local n="$1"
 
-	pk=$(Git.run config "$cachekey")
-	if [ -n "$pk" ]; then
-		F_FUNJIRA_KEY="$pk"
-		F_FUNJIRA_ISSUE="${pk}-$F_FUNJIRA_NUMBER"
-
-		Module.config 1 "issue key" "$F_FUNJIRA_KEY"
-		Module.config 1 "issue" "$F_FUNJIRA_ISSUE"
-		return 0
-	elif [ -z "$gitdir" ]; then
-		cachekey=
-	fi
-
-	js=$(FunJira._api "GET" "issue/createmeta")
-	CLI.die_ifz "$js" "failed to get project metadata"
-
-	Plist.init_with_raw "json" "$js"
-	cnt=$(Plist.get_count "projects")
-	CLI.die_ifz "$cnt" "failed to get projects array count"
-
-	for (( i = 0; i < $cnt; i++ )); do
-		local k="projects.$i"
-		local pd=
-		local n=
-
-		pd=$(Plist.get_value_xml "$k" "dictionary")
-		if [ -z "$pd" ]; then
-			continue
-		fi
-
-		Plist.init_with_raw "xml1" "$pd"
-		n=$(Plist.get_value "name" "string")
-		if [ "$n" = "$F_FUNJIRA_PROJECT" ]; then
-			pk=$(Plist.get_value "key" "string")
-			break
-		fi
-
-		Plist.init_with_raw "json" "$js"
-	done
-
-	CLI.die_ifz "$pk" "failed to get issue key for $F_FUNJIRA_PROJECT"
-
-	F_FUNJIRA_KEY="$pk"
-	F_FUNJIRA_ISSUE="${pk}-$F_FUNJIRA_NUMBER"
-
-	Module.config 1 "issue key" "$F_FUNJIRA_KEY"
-	Module.config 1 "issue" "$F_FUNJIRA_ISSUE"
-
-	if [ -n "$cachekey" ]; then
-		Git.run config --local "$cachekey" "$F_FUNJIRA_KEY"
-		CLI.die_check $? "failed to set issue key in git config"
-	fi
+	F_FUNJIRA_ISSUE="$n"
+	Module.config 0 "fungible jira issue"
+	Module.config 1 "number" "$F_FUNJIRA_ISSUE"
 }
 
-function FunJira.get_tracker_field()
+function FunJira.query_tracker_property()
 {
 	local f="$1"
+	local sep=
+
+	if [[ "$f" =~ BugPrefix\$$ ]]; then
+		sep="-"
+	fi
 
 	case "$f" in
-	Key)
-		echo "$F_FUNJIRA_KEY"
+	Key|BugPrefix)
+		local js=
+		local cnt=
+		local pk=
+
+		js=$(FunJira._api "GET" "issue/createmeta")
+		CLI.die_ifz "$js" "failed to get project metadata"
+
+		Plist.init_with_raw "json" "$js"
+		cnt=$(Plist.get_count "projects")
+		CLI.die_ifz "$cnt" "failed to get projects array count"
+
+		for (( i = 0; i < $cnt; i++ )); do
+			local k="projects.$i"
+			local pd=
+			local n=
+
+			pd=$(Plist.get_value_xml "$k" "dictionary")
+			if [ -z "$pd" ]; then
+				continue
+			fi
+
+			Plist.init_with_raw "xml1" "$pd"
+			n=$(Plist.get_value "name" "string")
+			if [ "$n" = "$F_FUNJIRA_PROJECT" ]; then
+				pk=$(Plist.get_value "key" "string")
+				break
+			fi
+
+			Plist.init_with_raw "json" "$js"
+		done
+
+		CLI.die_ifz "$pk" "failed to get issue key for $F_FUNJIRA_PROJECT"
+
+		# Now that we have the key, cache it.
+		Git.run config --local "${G_FUNJIRA_CONFIG}.key" "$pk"
+		if [ $? -ne 0 ]; then
+			CLI.warn "failed to cache issue key: $pk"
+		fi
+
+		if [ -n "$pk" ]; then
+			echo "${sep}${pk}"
+		fi
 		;;
-	BugPrefix)
-		echo "${F_FUNJIRA_KEY}-"
+	Key$|BugPrefix$)
+		pk=$(Git.run config "${G_FUNJIRA_CONFIG}.key")
+		if [ -n "$pk" ]; then
+			echo "${sep}${pk}"
+		fi
 		;;
 	esac
+}
+
+function FunJira.add_comment()
+{
+	local c="$1"
+	local js='{}'
+
+	Plist.init_with_raw "json" "$js"
+	Plist.set_value "body" "string" "$c"
+	js=$(Plist.get "json")
+
+	FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/comment" "$js"
+	CLI.die_check $? "add comment to issue"
 }
 
 function FunJira.update_field()
