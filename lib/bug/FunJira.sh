@@ -403,10 +403,6 @@ function FunJira.init()
 	local username="$2"
 	local secrets="$3"
 
-	# If a prefix was provided, then strip it since we're going to get it from
-	# either the config file or bug tracker. We just want this to be a number.
-	n=$(grep -oE '[0-9]+' <<< "$n")
-
 	F_FUNJIRA_PROJECT="$p"
 	F_FUNJIRA_USERNAME="$username"
 	F_FUNJIRA_SECRETS="$secrets"
@@ -424,7 +420,7 @@ function FunJira.init_problem()
 
 	F_FUNJIRA_ISSUE="$n"
 	Module.config 0 "fungible jira issue"
-	Module.config 1 "number" "$F_FUNJIRA_ISSUE"
+	Module.config 1 "identifier" "$F_FUNJIRA_ISSUE"
 }
 
 function FunJira.query_tracker_property()
@@ -478,13 +474,13 @@ function FunJira.query_tracker_property()
 		fi
 
 		if [ -n "$pk" ]; then
-			echo "${sep}${pk}"
+			echo "${pk}${sep}"
 		fi
 		;;
 	Key$|BugPrefix$)
 		pk=$(Git.run config "${G_FUNJIRA_CONFIG}.key")
 		if [ -n "$pk" ]; then
-			echo "${sep}${pk}"
+			echo "${pk}${sep}"
 		fi
 		;;
 	esac
@@ -619,7 +615,10 @@ function FunJira.update()
 	if [ ${#F_FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
 		js=$(Plist.get "json")
 		FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/transitions" "$js"
-		CLI.die_check $? "failed to transition issue: $F_FUNJIRA_ISSUE"
+
+		if [ $? -ne 0 ]; then
+			CLI.warn "failed to transition issue: $F_FUNJIRA_ISSUE"
+		fi
 	fi
 }
 
