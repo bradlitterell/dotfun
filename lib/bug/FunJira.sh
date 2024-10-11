@@ -428,7 +428,7 @@ function FunJira.query_tracker_property()
 	local f="$1"
 	local sep=
 
-	if [[ "$f" =~ BugPrefix\$$ ]]; then
+	if [[ "$f" =~ ^BugPrefix ]]; then
 		sep="-"
 	fi
 
@@ -495,8 +495,8 @@ function FunJira.add_comment()
 	Plist.set_value "body" "string" "$c"
 	js=$(Plist.get "json")
 
-	FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/comment" "$js"
-	CLI.die_check $? "add comment to issue"
+	q FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/comment" "$js"
+	CLI.warn_check $? "add comment to issue"
 }
 
 function FunJira.update_field()
@@ -588,7 +588,7 @@ function FunJira.update()
 		js=$($xf "$v")
 		CLI.die_ifz "$js" "failed to set update property: $f => $v"
 
-		FunJira._api "PUT" "issue/$F_FUNJIRA_ISSUE/properties/$p" "$js"
+		q FunJira._api "PUT" "issue/$F_FUNJIRA_ISSUE/properties/$p" "$js"
 		CLI.die_check $? "failed to set property: $p"
 	done
 
@@ -614,11 +614,8 @@ function FunJira.update()
 
 	if [ ${#F_FUNJIRA_UPDATE_TRANSITIONS[@]} -gt 0 ]; then
 		js=$(Plist.get "json")
-		FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/transitions" "$js"
-
-		if [ $? -ne 0 ]; then
-			CLI.warn "failed to transition issue: $F_FUNJIRA_ISSUE"
-		fi
+		q FunJira._api "POST" "issue/$F_FUNJIRA_ISSUE/transitions" "$js"
+		CLI.warn_check $? "transition issue: $F_FUNJIRA_ISSUE"
 	fi
 }
 
