@@ -13,14 +13,16 @@ and then cloning this repository via...
 
 ```
 $ git clone --bare git@github.com:SIGFUN/dotfun.git $HOME/.dotfun
-$ git --git-dir=$HOME/.dotfun --work-tree=$HOME checkout
+$ git --git-dir=$HOME/.dotfun --work-tree=$HOME checkout drops
 $ git --git-dir=$HOME/.dotfun --work-tree=$HOME config status.showUntrackedFiles no
 ```
 
-Then you'll want to configure a `~/.dotgit/gitconfig_fungible` for use by
-`git-fix`. After that you should be good to go.
+It's important to check out the `drops` branch, since its HEAD is a commit that
+removes all of my specific stuff and lets you create a Fungible configuration
+file at `~/.dotgit/gitconfig_fungible` for use by `git-fix`. After that you
+should be good to go.
 
-# Global `gitconfig`
+## Global `gitconfig`
 There is a global `gitconfig` in `.employer/gitconfig_global` with some handy
 `insteadOf` remappings. This file is intended to be included in a top-level
 `$HOME/.gitconfig` via the `include.path` configuration parameter.
