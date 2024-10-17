@@ -1,0 +1,320 @@
+#!/bin/bash -O extglob
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Bytes.sh"
+
+# MARK: Globals
+G_MAX_KEYS=96
+G_RSA_MAX_LEN=$(( 4096 / 8 ))
+G_SHA_LEN=384
+G_FSS_URL="https://f1reg.fungible.com:4443/cgi-bin/signing_server.cgi"
+
+# Parsed options
+GIT_PARSEOPT_SPEC="\
+kbbuddy [options] KEYBAG
+
+Dumps the contents of KEYBAG. By default, the RSA moduli themselves are not \
+printed, but their sha2-384 digests are.
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+m,modulus             Print the modulus of each key in addition to its digest
+
+k,check-key=PEM       Check if the public key represented by PEM is present in \
+the keybag. If present, the tool will exit with success, otherwise it will \
+fail. No keybag contents are printed
+
+r,check-request=CSR   Check if the public key in the certificate signing \
+request represented by CSR is present in the keybag. If present, the tool will \
+exit with success, otherwise it will fail. No keybag contents are printed
+
+s,check-signing-service=KEY-NAME \
+                      Check if the KEY-NAME in the firmware signing service is \
+present in the key bag. Example key names are 'hkey1' and 'hkey2'
+
+$(CLI.get_global_blurb)
+"
+
+O_MODULUS=
+O_KEYBAG=
+O_CHECK_KEY=
+O_CHECK_CSR=
+O_ACTION=__print
+
+# MARK: Utilities
+function query_key_modulus()
+{
+	local k="$1"
+	local url="$G_FSS_URL"
+	local kf=$(CLI.get_run_state_path "$k")
+	local mod=
+
+	url+="?cmd=modulus"
+	url+="&format=binary"
+	url+="&key=$k"
+
+	CLI.command curl -s -X GET "$url" -o "$kf"
+	CLI.die_check $? "failed to query key modulus: $k"
+
+	mod=$(CLI.command xxd -g0 -p "$kf" | tr -d $'\n')
+
+	CLI.status "$k = $mod"
+	echo "$mod"
+}
+
+function parse_keybag()
+{
+	local kb="$1"
+	local callback="$2"
+	local v=
+	local nk=
+	local pad=
+	local i=
+
+	Bytes.init_with_file "$kb"
+
+	# The keybag header is defined as...
+	#
+	# struct key_bag_header_s {
+	#     int8_t h[4];
+	#     uint16_t key_offsets[MAX_KEYS];
+	# }
+	#
+	# cf. SBPFirmware/software/esec/firmware/sources/eSecure_key_bag.c
+	#
+	# The header integers are single byte, so endianness doesn't matter, but
+	# the keybag is created with Python, which will write bytes in host
+	# endianness on x86, so that's going to be little endian.
+	v=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_length "$v" "current" 1
+
+	nk=$(Bytes.read_integer 1 "u" "little")
+	Bytes.check_read_length "$nk" "current" 1
+
+	pad=$(Bytes.read_integer 2 "x" "little")
+	Bytes.check_read_length "$pad" "pad bytes" 2
+
+	$callback "header" "$v" "$nk"
+
+	for (( i = 0; i < nk; i++ )); do
+		local off=
+		local k_len=
+		local k_off=
+		local k=
+		local kd=
+
+		off=$(Bytes.read_integer 2 "u" "little")
+		Bytes.check_read_length "$off" "offset for key entry at index: $i" 2
+		CLI.debug "read offset: i = $i, off = $off words"
+
+		# Infuriatingly, the offset is the number of 32-bit words, not the
+		# number of bytes. I guess this was to save space, but if that was the
+		# goal, a better way would've been to chop down the maximum number of
+		# keys that could be in the keybag. Today there are only four.
+		off=$(( off * 4 ))
+		CLI.status "key entry at offset: bytes = $off, offset = $(( off / 4 ))"
+		CLI.debug "read offset: i = $i, off = $off bytes"
+
+		# Each key entry is prefixed with a 4-byte integer which indicates the
+		# key length. This structure isn't explicitly defined anywhere, but if
+		# it was, it'd look like this:
+		#
+		# struct key_bag_entry_s {
+		#     uint32_t len;
+		#     uint8_t key[512];
+		# } __attribute__((packed));
+		k_len=$(Bytes.get_integer "$off" 4 "u" "little")
+		CLI.die_ifz "$k_len" "failed to read key length: i = $i, off = $off"
+		CLI.debug "read key length: i = $i, length = $k_len"
+
+		if [ $k_len -gt $G_RSA_MAX_LEN ]; then
+			CLI.die "bogus key length: i = $i, off = $off, len = $k_len"
+		fi
+
+		# Now read the actual key.
+		k_off=$(( off + 4 ))
+		k=$(Bytes.map "$k_off" "$k_len")
+		CLI.die_ifz "$k_len" "failed to read key:" \
+				"i = $i, off = $k_off, length = $k_len"
+
+		kd=$(Bytes.measure $G_SHA_LEN "$k")
+		$callback "key" "$i" "$k_off" "$k_len" "$kd" "$k"
+	done
+
+	$callback "end"
+}
+
+# MARK: Actions
+function __print()
+{
+	local which="$1"
+
+	shift
+	case "$which" in
+	header)
+		local v="$1"
+		local nk="$2"
+
+		CLI.print_field 0 "header"
+		CLI.print_field 1 "version" "$v"
+		CLI.print_field 1 "key count" "$nk"
+		;;
+	key)
+		local k_index="$1"
+		local k_off="$2"
+		local k_len="$3"
+		local k_digest="$4"
+		local k_mod="$5"
+
+		CLI.print_field 1 "key" "$k_index"
+		CLI.print_field 2 "offset" "$k_off"
+		CLI.print_field 2 "length" "$k_len"
+		CLI.print_field 2 "digest" "$k_digest"
+
+		if [ -n "$O_MODULUS" ]; then
+			CLI.print_field 2 "modulus" "$k_mod"
+		fi
+		;;
+	end)
+		;;
+	*)
+		CLI.die "unsupported keybag callback: $which"
+		;;
+	esac
+}
+
+function __check()
+{
+	local which="$1"
+
+	shift
+	case "$which" in
+	header)
+		;;
+	key)
+		local k_index="$1"
+		local k_off="$2"
+		local k_len="$3"
+		local k_digest="$4"
+		local k_mod="$5"
+
+		CLI.status "examining key with digest: $k_digest"
+		if [ "$k_digest" = "$O_CHECK_KEY" ]; then
+			CLI.status "key is present in keybag"
+			exit 0
+		fi
+		;;
+	end)
+		CLI.err "key not present in keybag"
+		exit 1
+		;;
+	*)
+		CLI.die "unsupported keybag callback: $which"
+		;;
+	esac
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	if [ -n "$O_CHECK_CSR" ]; then
+		local pubkey=$(CLI.get_run_state_path "pem")
+
+		CLI.command openssl req -pubkey -in "$O_CHECK_CSR" -noout -out "$pubkey"
+		O_CHECK_KEY="$pubkey"
+	fi
+
+	if [ -n "$O_CHECK_FSS" ]; then
+		local mod=
+
+		mod=$(query_key_modulus "$O_CHECK_FSS")
+		CLI.die_ifz "$mod" "failed to query key modulus: $O_CHECK_FSS"
+
+		O_CHECK_KEY="$(Bytes.measure "$G_SHA_LEN" "$mod")"
+		CLI.status "looking for key modulus digest: $O_CHECK_KEY"
+	elif [ -n "$O_CHECK_KEY" ]; then
+		local mod=
+
+		mod=$(CLI.command openssl rsa -pubin -in "$O_CHECK_KEY" -modulus -noout)
+		mod=${mod#Modulus=*}
+
+		O_CHECK_KEY="$(Bytes.measure "$G_SHA_LEN" "$mod")"
+		CLI.status "looking for key modulus digest: $O_CHECK_KEY"
+	fi
+
+	parse_keybag "$O_KEYBAG" "$O_ACTION"
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		case "$1" in
+		-m | --modulus)
+			O_MODULUS=t
+			shift
+			;;
+		-k | --check-key=*)
+			O_CHECK_KEY="$arg"
+			O_ACTION=__check
+			shift
+			;;
+		-r | --check-request=*)
+			O_CHECK_CSR="$arg"
+			O_ACTION=__check
+			shift
+			;;
+		-s | --check-signing-service=*)
+			O_CHECK_FSS="$arg"
+			O_ACTION=__check
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-revparse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	if [ $# -lt 1 ]; then
+		CLI.die_noopt "key bag file"
+	fi
+
+	O_KEYBAG="$1"
+	shift
+
+	__cmd "$@"
+}
+
+__main "$@"
