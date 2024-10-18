@@ -98,13 +98,13 @@ function parse_keybag()
 	# the keybag is created with Python, which will write bytes in host
 	# endianness on x86, so that's going to be little endian.
 	v=$(Bytes.read_integer 1 "x" "little")
-	Bytes.check_read_length "$v" "current" 1
+	Bytes.check_read_integer "$v" "current" 1
 
 	nk=$(Bytes.read_integer 1 "u" "little")
-	Bytes.check_read_length "$nk" "current" 1
+	Bytes.check_read_integer "$nk" "current" 1
 
 	pad=$(Bytes.read_integer 2 "x" "little")
-	Bytes.check_read_length "$pad" "pad bytes" 2
+	Bytes.check_read_integer "$pad" "pad bytes" 2
 
 	$callback "header" "$v" "$nk"
 
@@ -116,7 +116,7 @@ function parse_keybag()
 		local kd=
 
 		off=$(Bytes.read_integer 2 "u" "little")
-		Bytes.check_read_length "$off" "offset for key entry at index: $i" 2
+		Bytes.check_read_integer "$off" "offset for key entry at index: $i" 2
 		CLI.debug "read offset: i = $i, off = $off words"
 
 		# Infuriatingly, the offset is the number of 32-bit words, not the

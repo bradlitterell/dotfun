@@ -1,0 +1,419 @@
+#!/bin/bash -O extglob
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Bytes.sh"
+
+# MARK: Globals
+G_RSA_MAX_LEN=$(( 4096 / 8 ))
+G_CERTIFICATE_RESERVED=1524
+G_CERTIFICATE_SECTION="certificate"
+G_AUTH_SECTION="auth header"
+G_SIGNING_INFO_CNT=2
+
+G_FIRMWARE_LEN=0
+
+# Parsed options
+GIT_PARSEOPT_SPEC="\
+imaginarium [options] IMAGE
+
+Introspect and decompose signed firmware images. By default, the image header \
+is printed to stdout.
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+x,decode                       decode the raw bytes of IMAGE and write them to \
+standard output. No other image information is written
+
+$(CLI.get_global_blurb)
+"
+
+O_ACTION=__print_header
+O_IMAGE=
+
+# MARK: Utilities
+function parse_rsa_struct()
+{
+	local sect="$1"
+	local fld="$2"
+	local image="$3"
+	local callback="$4"
+	local bloblen=
+	local blob=
+	local left=
+
+	bloblen=$(Bytes.read_integer 4 "d" "little")
+	Bytes.check_read_integer "$bloblen" "blob length" 4
+
+	if [ $bloblen -gt $G_RSA_MAX_LEN ]; then
+		CLI.die "bogus rsa blob length:" \
+				"actual = $bloblen, expected <= $G_RSA_MAX_LEN," \
+				"section = $sect, field = $fld"
+	fi
+	$callback "$sect" "$fld length" "$bloblen"
+
+	blob=$(Bytes.read "$bloblen")
+	Bytes.check_read "$blob" "rsa blob" "$bloblen"
+	$callback "$sect" "$fld" "$blob"
+
+	left=$(( G_RSA_MAX_LEN - bloblen ))
+	pad=$(Bytes.read $left)
+	Bytes.check_read "$pad" "unused rsa blob bytes" "$left"
+}
+
+function parse_signing_info()
+{
+	local image="$1"
+	local callback="$2"
+	local cursor=$(Bytes.getpos)
+	local bound=$(( cursor + G_CERTIFICATE_RESERVED ))
+	local magic=
+	local authdebug=
+	local auth_misc=
+	local key_index=
+	local auth_tamper=
+	local serialno=
+	local serialno_mask=
+	local magic_sign=
+	local left=
+
+	# Read the signing info.
+	#
+	# typedef struct signing_info_s {
+	#     union {
+	#         uint8_t padding[SIGNING_INFO_PADDING_SIZE];
+	#         certificate_ex_t certificate;
+	#         uint32_t magic;
+	#     };
+	#     uint8_t sign_magic[8];
+	#     rsa_signature_t signature;
+	# } signing_info_t;
+	#
+	# typedef struct certificate_ex_s {
+	#     certificate_content_ex_t content;
+	#     rsa_signature_t signature;
+	# } certificate_ex_t;
+	#
+	# typedef struct certificate_content_ex_s {
+	#     uint32_t magic_number;
+	#     uint32_t auth_debug;
+	#     uint8_t auth_misc;
+	#     uint8_t key_index;
+	#     uint16_t padding;
+	#     uint32_t auth_tamper;
+	#     uint8_t serialno[SERIAL_NUMBER_SIZE];
+	#     uint8_t serialno_mask[SERIAL_NUMBER_SIZE];
+	#     rsa_key_t public_key;
+	# } certificate_content_ex_t;
+	#
+	# typedef struct rsa_signature_s {
+	#     uint32_t signature_size;
+	#     uint8_t signature[RSA_MAX_SIZE];
+	# } rsa_signature_t;
+	#
+	# typedef struct rsa_key_s {
+	#     uint32_t modulus_size;
+	#     uint8_t modulus[RSA_MAX_SIZE];
+	# } rsa_key_t;
+	#
+	# cf. SBPFirmware/software/esec/libs/common/eSecure_rsa_structs.h
+	magic=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$magic" "cert magic" 4
+	$callback "certificate" "magic" "$magic"
+
+	authdebug=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$authdebug" "cert authdebug" 4
+	$callback "certificate" "auth debug" "$authdebug"
+
+	auth_misc=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$auth_misc" "cert auth misc" 1
+	$callback "certificate" "auth misc" "$auth_misc"
+
+	key_index=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$key_index" "cert key index" 1
+	$callback "certificate" "key index" "$key_index"
+
+	pad=$(Bytes.read_integer 2 "x" "big")
+	Bytes.check_read_integer "$pad" "cert padding" 2
+
+	auth_tamper=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$auth_tamper" "cert auth tamper" 4
+	$callback "certificate" "auth tamper" "$auth_tamper"
+
+	serialno=$(Bytes.read 24)
+	Bytes.check_read_bytes "$serialno" "cert serial number"
+	$callback "certificate" "serial number" "$serialno"
+
+	serialno_mask=$(Bytes.read 24)
+	Bytes.check_read_bytes "$serialno_mask" "cert serial number mask"
+	$callback "certificate" "serial number mask" "$serialno_mask"
+
+	parse_rsa_struct "certificate" "public key" "$image" "$callback"
+	parse_rsa_struct "certificate" "issuer signature" "$image" "$callback"
+
+	cursor=$(Bytes.getpos)
+	if [ $cursor -gt $bound ]; then
+		CLI.die "cursor exceeded signing info bounds:" \
+				"cursor = $cursor, expected <= $bound"
+	fi
+
+	left=$(( bound - cursor ))
+	pad=$(Bytes.read $left)
+	Bytes.check_read "$pad" "unused signing info bytes" "$left"
+
+	magic_sign=$(Bytes.read 8)
+	Bytes.check_read_bytes "$magic_sign" "signing info magic string"
+
+	# The magic string is not null-terminated.
+	magic_sign+="00"
+	magic_sign=$(Bytes.to_raw_unsafe "$magic_sign")
+	$callback "certificate" "magic trailer" "$magic_sign"
+
+	parse_rsa_struct "certificate" "signature" "$image" "$callback"
+	$callback "certificate" "end"
+}
+
+function parse_auth_header()
+{
+	local image="$1"
+	local callback="$2"
+	local fwlen=
+	local fwvers=
+	local fwtype=
+	local dpufam=
+	local dpudev=
+	local dpurev=
+	local fpk4_index=
+	local dice_index=
+	local fwdesc=
+	local pad=
+
+	# Read the auth header.
+	#
+	# typedef struct fw_fun_auth_header_s {
+	#     uint32_t fw_size;
+	#     uint32_t fw_version;
+	#     uint32_t fw_type;
+	#     uint8_t dpu_family;
+	#     uint8_t dpu_device;
+	#     uint8_t dpu_revision;
+	#     uint8_t align;
+	#     union {
+	#         uint32_t locs[2];
+	#         uint8_t padding[28];
+	#     };
+	#     uint8_t description[32];
+	# } fw_fun_auth_header_t;
+	#
+	# cf. SBPFirmware/software/esec/libs/common/eSecure_rsa_structs.h
+	fwlen=$(Bytes.read_integer 4 "d" "little")
+	Bytes.check_read_integer "$fwlen" "fw length" 4
+	$callback "auth header" "firmware length" "$fwlen"
+
+	fwvers=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$fwvers" "fw version" 4
+	$callback "auth header" "firmware version" "$fwvers"
+
+	# The firmware type is a four character-code that's written as a byte array
+	# rather than a 32-bit integer, so don't swap it. It should never contain
+	# null bytes, so we stash the raw bytes in our variable to print as a
+	# string.
+	fwtype=$(Bytes.read_integer 4 "x" "big")
+	Bytes.check_read_integer "$fwtype" "fw type" 4
+	fwtype=$(Bytes.to_raw_unsafe "$fwtype")
+	$callback "auth header" "firmware type" "$fwtype"
+
+	dpufam=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$dpufam" "fw dpu family" 1
+	$callback "auth header" "dpu family" "$dpufam"
+
+	dpudev=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$dpudev" "fw dpu device" 1
+	$callback "auth header" "dpu device" "$dpudev"
+
+	dpurev=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$dpurev" "fw dpu revision" 1
+	$callback "auth header" "dpu revision" "$dpurev"
+
+	pad=$(Bytes.read_integer 1 "x" "little")
+	Bytes.check_read_integer "$pad" "padding" 1
+
+	fpk4_index=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$fpk4_index" "fpk4 index" 4
+	$callback "auth header" "fpk4 index" "$fpk4_index"
+
+	dice_index=$(Bytes.read_integer 4 "x" "little")
+	Bytes.check_read_integer "$dice_index" "dice index" 4
+	$callback "auth header" "dice index" "$dice_index"
+
+	pad=$(Bytes.read 20)
+	Bytes.check_read_bytes "$pad" "padding"
+
+	fwdesc=$(Bytes.read 32)
+	Bytes.check_read_bytes "$fwdesc" "fw description"
+
+	# This is just a C string, so we're okay to store the raw bytes up to the
+	# null terminator.
+	fwdesc=$(Bytes.to_raw_unsafe "$fwdesc")
+	$callback "auth header" "description" "$fwdesc"
+}
+
+function parse_image()
+{
+	local image="$1"
+	local callback="$2"	
+	local i=0
+	
+	Bytes.init_with_file "$image"
+
+	# Images are signed with two signing info sections, one for the customer and
+	# one for Fungible. The customer certificate signs the Fungible certificate
+	# and image payload. The Fungible certificate signs the image. So this
+	# header in SBPFirmware is not strictly correct, since there should be two
+	# signing_info_t structures prior to the auth header.
+	#
+	# typedef struct fw_fun_header_s {
+	#     signing_info_t signing_info;
+	#     fw_fun_auth_header_t auth;
+	# } fw_fun_header_t;
+	#
+	# cf. SBPFirmware/software/esec/libs/common/eSecure_rsa_structs.h
+	for (( i = 0; i < G_SIGNING_INFO_CNT; i++ )); do
+		parse_signing_info "$image" "$callback"
+	done
+
+	parse_auth_header "$image" "$callback"
+	$callback "end" "" "$fwdesc"
+}
+
+# MARK: Actions
+function __print_header()
+{
+	local sect="$1"
+	local fld="$2"
+	local v="$3"
+
+	case "$sect" in
+	certificate)
+		if [ -n "$G_CERTIFICATE_SECTION" ]; then
+			CLI.print_field 0 "$sect"
+			G_CERTIFICATE_SECTION=
+		fi
+
+		if [ "$fld" = "end" ]; then
+			G_CERTIFICATE_SECTION="certificate"
+			return
+		fi
+
+		CLI.print_field 1 "$fld" "$v"
+		;;
+	'auth header')
+		if [ -n "$G_AUTH_SECTION" ]; then
+			CLI.print_field 0 "$sect"
+			G_AUTH_SECTION=
+		fi
+
+		CLI.print_field 1 "$fld" "$v"
+		;;
+	end)
+		;;
+	*)
+		CLI.die "unsupported image section: $sect"
+		;;
+	esac
+}
+
+function __decode()
+{
+	local sect="$1"
+	local fld="$2"
+	local v="$3"
+
+	case "$sect" in
+	certificate)
+		;;
+	'auth header')
+		if [ "$fld" = "firmware length" ]; then
+			G_FIRMWARE_LEN=$v
+		fi
+		;;
+	end)
+		local payload=
+
+		# The raw payload immediately follows the image header. It's padded, so
+		# only read what we found in the length field.
+		payload=$(Bytes.read $G_FIRMWARE_LEN)
+		Bytes.check_read "$payload" "image payload" $G_FIRMWARE_LEN
+
+		Bytes.to_raw_unsafe "$payload"
+		exit 0
+		;;
+	*)
+		CLI.die "unsupported image section: $sect"
+		;;
+	esac
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	parse_image "$O_IMAGE" "$O_ACTION"
+}
+
+function __main()
+{
+    local me="$(basename ${BASH_SOURCE[0]})"
+
+    CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+    eval "$(echo "$GIT_PARSEOPT_SPEC" |
+        git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+                || echo exit $?
+    )"
+
+    while [ $# -ne 0 ]; do
+        local arg="$(CLI.parse_argument "$1")"
+        local arg_opt=()
+
+        case "$1" in
+        -x | --decode)
+            O_ACTION=__decode
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            # This was one of the common options that was already consumed by
+            # the CLI module. git-revparse will not have normalized an
+            # unrecognized option.
+            shift
+            ;;
+        *)
+            break
+            ;;
+        esac
+    done
+
+    if [ $# -lt 1 ]; then
+        CLI.die_noopt "image file"
+    fi
+
+    O_IMAGE="$1"
+    shift
+
+    __cmd "$@"
+}
+
+__main "$@"
