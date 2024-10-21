@@ -170,6 +170,13 @@ function parse_signing_info()
 
 	left=$(( bound - cursor ))
 	pad=$(Bytes.read $left)
+	if [ "$pad" = "EOF" ]; then
+		# This can happen if we're reading a start certificate, in which case
+		# we can just stop right now.
+		$callback "certificate" "end"
+		exit 0
+	fi
+
 	Bytes.check_read "$pad" "unused signing info bytes" "$left"
 
 	magic_sign=$(Bytes.read 8)
