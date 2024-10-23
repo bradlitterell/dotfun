@@ -21,6 +21,7 @@
 
 [fix "bug"]
 	tracker = FunJira
+	urlFormat = http://jira.fungible.local/browse/%PREFIX%%NUMBER%
 	account = dsorresso
 	regex = [0-9]{4,}
 	trailer = Bug-Id
