@@ -30,9 +30,11 @@ if [ -z "$image" ]; then
 fi
 
 # If FunTest is included in the bundle, then make sure we tell that to run_f1.
-tests=$(readlink "images/FunTest/gzip")
-if [ -n "$tests" ]; then
-	tests=" --other-image $d/images/FunTest/$tests"
+if [ -f "images/FunTest/gzip" ]; then
+	tests=$(readlink "images/FunTest/gzip")
+	if [ -n "$tests" ]; then
+		tests=" --other-image $d/images/FunTest/$tests"
+	fi
 fi
 
 v_arg=
