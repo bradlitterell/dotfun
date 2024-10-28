@@ -16,12 +16,12 @@
 [fix "pr"]
 	backend = GitHub
 	organization = fungible-inc
-	account = SIGFUN
+	username = SIGFUN
 	namespace = PR
 
 [fix "bug"]
 	tracker = FunJira
 	urlFormat = http://jira.fungible.local/browse/%PREFIX%%NUMBER%
-	account = dsorresso
+	username = dsorresso
 	regex = [0-9]{4,}
 	trailer = Bug-Id
