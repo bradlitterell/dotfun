@@ -14,6 +14,21 @@ libdir="${dotfiles}/lib"
 . "${libdir}/CLI.sh"
 . "${libdir}/Git.sh"
 
+# MARK: Globals
+G_HOMEBREW_PACKAGES=(
+	"jq"
+	# Ninja and pkg-config are required by FunQemu.
+	"ninja"
+	"pkg-config"
+	"glib"
+	"pixman"
+)
+
+G_PIP_PACKAGES=(
+	# Needed for FunOS signing.
+	"requests"
+)
+
 # Parsed options
 GIT_PARSEOPT_SPEC="\
 funblock
@@ -38,11 +53,19 @@ function __cmd()
 {
 	local xcompdir="/Users/Shared/cross/mips64"
 	local binutils=$(CLI.get_run_state_path "binutils.tar.xz")
-	local v_arg=$(CLI.get_verbosity_opt "v")
+	local v_arg=
 	local s_arg=$(CLI.get_verbosity_opt "s")
 
-	CLI.command brew install jq
-	CLI.die_check $? "failed to install jq"
+	v_arg=$(CLI.get_verbosity_opt "dv")
+	for p in "${G_HOMEBREW_PACKAGES[@]}"; do
+		CLI.command brew install ${v_arg} "$p"
+		CLI.die_check $? "failed to install $p"
+	done
+
+	for p in "${G_PIP_PACKAGES[@]}"; do
+		CLI.command pip ${v_arg} install request
+		CLI.die_check $? "failed to install $p"
+	done
 
 	CLI.command mkdir -p "$xcompdir"
 	CLI.die_check $? "failed to create cross-compiler directory"
@@ -50,13 +73,9 @@ function __cmd()
 	CLI.command curl $s_arg "$G_BINUTILS" -o "$binutils"
 	CLI.die_check $? "failed to fetch binutils"
 
+	v_arg=$(CLI.get_verbosity_opt "v")
 	CLI.command tar -xz${v_arg}f "$binutils" -C "$xcompdir"
 	CLI.die_check $? "failed to unarchive binutils"
-
-	# Needed for FunOS signing.
-	v_arg=$(CLI.get_verbosity_opt "dv")
-	CLI.command pip ${v_arg} install request
-	CLI.die_check $? "failed to install requests Python package"
 }
 
 function __main()

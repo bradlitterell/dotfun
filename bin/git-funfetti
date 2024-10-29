@@ -19,10 +19,15 @@ libdir="${dotfiles}/lib"
 . "${funlib}/FunDotParams.sh"
 
 # MARK: Globals
-G_ALL_ACTIONS=(
+G_GENERIC_ACTIONS=(
 	"__build"
 	"__master"
-	"__test"
+)
+
+G_TEST_ACTIONS=(
+	"__fod"
+	"__run"
+	"__debug"
 )
 
 # We only pick from the instances that run a Linux of some sort -- others are
@@ -45,8 +50,15 @@ user. The user may specify one of the following ACTIONs:
     build          performs project builds only
     master         builds projects and then masters the resulting images into \
 a test bundle
-    test           masters the test bundle and submits it to the Fun-on-Demand \
-service for testing
+    fod            masters the test bundle and submits it to the Fun-on-Demand \
+service for testing -- this can only be used for the 'soc' PLATFORM
+    run            masters the test bundle and runs it locally -- this can \
+only be used for the 'posix' and 'qemu' PLATFORMS. A DPC listener is set up on \
+port 40222
+    debug          masters the test bundle and starts a debug server instance \
+to debug the image. This can only be used for the 'posix' and 'qemu'
+PLATFORMS, and the program will be suspended at the first instruction. Due to \
+limitations in our Qemu, the DPC listener is not available when debugging
 
 The following firmwares are supported and may be given as arguments to the \
 f,firmware option:
@@ -128,7 +140,7 @@ created via 'mkdir -p', and the bundle will be overwritten if it already \
 exists. If unspecified, the bundle is written to a temporary location
 
 n,cluster-number=NUMBER       The specific fun-on-demand server to connect to \
-for operations. If unspecified, one is chosen at random
+when performing the 'fod' ACTION. If unspecified, one is chosen at random
 
 m,email-address=EMAIL-ADDRESS Add EMAIL-ADDRESS to the list of email addresses \
 that should receive status updates for the job. This can be specified multiple \
@@ -341,6 +353,7 @@ function __master()
 	local imgroot=$(Assembly.get_image_root)
 	local bug_id=
 	local branch=
+	local which=
 
 	bug_id=$(Branch.guess_primary_problem)
 	CLI.die_ifz "$bug_id" "failed to guess branch problem"
@@ -362,7 +375,16 @@ function __master()
 		Fundle.add_boot_arg "$ba"
 	done
 
-	Fundle.package "signed"
+	case "$O_PLATFORM" in
+	soc|emu)
+		which="signed"
+		;;
+	posix|qemu)
+		which="rich"
+		;;
+	esac
+
+	Fundle.package "$O_PLATFORM" "$which"
 
 	if [ -n "$O_OUTPUT_BUNDLE" ]; then
 		local root=$(Fundle.get_root)
@@ -374,7 +396,7 @@ function __master()
 	fi
 }
 
-function __test()
+function __fod()
 {
 	local chip="$1"
 	local v_arg=$(CLI.get_verbosity_opt "dv")
@@ -393,6 +415,18 @@ function __test()
 	fi
 
 	Fundle.submit "$O_HOST"
+}
+
+function __run()
+{
+	local chip="$1"
+	Fundle.run "$O_PLATFORM"
+}
+
+function __debug()
+{
+	local chip="$1"
+	Fundle.debug "$O_PLATFORM"
 }
 
 # MARK: Command Implementation
@@ -429,6 +463,21 @@ function __cmd()
 		# derive it from the machine.
 		O_PLATFORM="$m_platform"
 	fi
+
+	# Normally we'd do this in the __main function, but since we do special
+	# stuff to determine the platform, we check validity here.
+	case "$O_ACTION" in
+	fod)
+		if [ "$O_PLATFORM" != "soc" ]; then
+			CLI.die "platform not supported for $O_ACTION: $O_PLATFORM"
+		fi
+		;;
+	debug)
+		if [ "$O_PLATFORM" != "posix" ] && [ "$O_PLATFORM" != "qemu" ]; then
+			CLI.die "platform not supported for $O_ACTION: $O_PLATFORM"
+		fi
+		;;
+	esac
 
 	for a in ${O_ACTIONS[@]}; do
 		$a "$chip" "$@"
@@ -577,9 +626,11 @@ function __main()
 	O_PRODUCT="$2"
 	shift 2
 
-	# Go through the list of all actions and include everything up to and
-	# including the specified action.
-	for a in ${G_ALL_ACTIONS[@]}; do
+	# Go through the list of generic actions and include everything up to and
+	# including the specified action. If we cannot find the specified action,
+	# we'll look in the test actions list, since test actions are all mutually
+	# exclusive.
+	for a in ${G_GENERIC_ACTIONS[@]}; do
 		CLI.status "will perform action: $a"
 		O_ACTIONS+=("$a")
 
@@ -588,6 +639,18 @@ function __main()
 			break
 		fi
 	done
+
+	if [ -z "$action_found" ]; then
+		for a in ${G_TEST_ACTIONS[@]}; do
+			if [ "$a" = "__$O_ACTION" ]; then
+				CLI.status "will perform action: $a"
+				
+				O_ACTIONS+=("$a")
+				action_found="$a"
+				break
+			fi
+		done
+	fi
 
 	CLI.die_ifz "$action_found" "invalid action: $O_ACTION"
 

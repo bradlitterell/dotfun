@@ -1,0 +1,189 @@
+#!/bin/bash -O extglob
+
+# MARK: Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# MARK: Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Bytes.sh"
+
+# MARK: Globals
+G_QEMU_PORT=1234
+G_POSIX_PORT=4321
+
+# MARK: Parsed options
+GIT_PARSEOPT_SPEC="\
+fdb [options] [FUNOS-IMAGE] [--] [arguments to gdb or lldb]
+
+FunOS debug trampoline.
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+a,attach=posix|qemu               attach the appropriate debugger to the port \
+configured by either qemu-dpu or lldb debug FUNOS-IMAGE. The Qemu image will \
+be debugged with gdb, and the POSIX image will be debugged with lldb. The Qemu \
+FunOS will open a dpcsh port on port 40222
+
+s,sdk=SDK-DIRECTORY               use the SDK in SDK-DIRECTORY. If not \
+specified, the SDKDIR environment variable is used
+
+H,fungdb-help                     print the help for fungdbserver
+
+$(CLI.get_global_blurb)
+"
+
+O_ATTACH=
+O_SDK="$SDKDIR"
+O_IMAGE=
+O_ACTION=
+
+# MARK: Command Implementation
+function __fungdb_help()
+{
+	local gdb_trampoline="$1"
+	local gdbserver_tramp="$2"
+
+	CLI.command "$gdbserver_tramp" -h
+}
+
+function __qemu_attach()
+{
+	local gdb_tramp="$1"
+	local gdbserver_tramp="$2"
+	local cmds=(
+		"target remote localhost:$G_QEMU_PORT"
+	)
+	local gdb_argv=()
+
+	gdb_argv+=("$gdb_tramp")
+	for cmd in "${cmds[@]}"; do
+		gdb_argv+=("--ex" "$cmd")
+	done
+
+	gdb_argv+=("$O_IMAGE")
+
+	shift 2
+	CLI.command "${gdb_argv[@]}" "$@"
+}
+
+function __posix_attach()
+{
+	local gdb_tramp="$1"
+	local gdbserver_tramp="$2"
+	local cmds=(
+		"-O"
+		"target create $O_IMAGE"
+		"-O"
+		"gdb-remote localhost:$G_POSIX_PORT"
+	)
+	local lldb_argv=(
+		"xcrun"
+		"-sdk"
+		"macosx"
+		"lldb"
+	)
+
+	for cmd in "${cmds[@]}"; do
+		lldb_argv+=("$cmd")
+	done
+
+	shift 2
+	CLI.command "${lldb_argv[@]}" "$@"
+}
+
+function __cmd()
+{
+	local varg=$(CLI.get_verbosity_opt "dv")
+	local qarg=$(CLI.get_verbosity_opt "dq")
+	local gdb_tramp="/Users/Shared/cross/mips64/bin/mips64-unknown-elf-gdb"
+	local gdbserver_tramp="$O_SDK/bin/scripts/fungdbserver.py"
+	local out_where=
+
+	CLI.command pip show $varg $qarg python-idzip
+	if [ $? -ne 0 ]; then
+		CLI.command pip install $varg $qarg python-idzip
+	fi
+
+	$O_ACTION "$gdb_tramp" "$gdbserver_tramp" "$@"
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+	local expect_image=
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		case "$1" in
+		-a | --attach=*)
+			O_ATTACH="$arg"
+			case "$O_ATTACH" in
+			posix)
+				O_ACTION="__posix_attach"
+				;;
+			qemu)
+				O_ACTION="__qemu_attach"
+				;;
+			*)
+				CLI.die "unsupported attach type: $O_ATTACH"
+				;;
+			esac
+
+			expect_image=t
+			shift
+			;;
+		-s | --sdk=*)
+			O_SDK="$arg"
+			shift
+			;;
+		-H | --fungdb-help)
+			O_ACTION=__fungdb_help
+			O_FUNGDB_HELP=t
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-revparse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	CLI.die_ifz "$O_SDK" "must specify an SDK or set SDKDIR"
+	if [ -n "$expect_image" ]; then
+		if [ $# -lt 1 ]; then
+			CLI.die_noopt "image to debug"
+		fi
+
+		O_IMAGE="$1"
+		shift
+	fi
+
+	__cmd "$@"
+}
+
+__main "$@"

@@ -12,7 +12,8 @@
     "TagPrefix": "bld_",
     "Exports":
     {
-        "SDKDIR": "%WORKSPACE%/FunSDK-small"
+        "SDKDIR": "%WORKSPACE%/FunSDK-small",
+        "SDK_INSTALL_DIR": "%WORKSPACE%/FunSDK-small"
     },
     "MinimumBuildCycle": "Iterative"
 }

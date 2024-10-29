@@ -26,6 +26,21 @@ fi
 
 # MARK: Globals
 G_FUNDLE_HWMODELS_URL="http://fun-on-demand-01:9004/hardware_models"
+G_FUNDLE_PARAM_ENV_MAP=(
+	"RUN_TARGET" "run_target" "string" ""
+	"HW_MODEL" "hardware_model" "string" ""
+	"BOOTARGS" "boot_args" "string" ""
+	"CENTRAL_SCRIPT" "central_script" "string" ""
+	"TAGS" "tags" "array" ","
+	"EXTRA_EMAIL" "owners" "array" ","
+)
+G_FUNDLE_JOB_BRANCHES=(
+	"branch_funos" "master"
+	"branch_funsdk" "master"
+	"branch_uboot" "fungible/master"
+)
+G_LLDB_SERVER="SharedFrameworks/LLDB.framework/Versions/A/Resources/debugserver"
+G_GDB="/Users/Shared/cross/mips64/bin/mips64-unknown-elf-gdb"
 
 # MARK: Object Fields
 F_FUNDLE_BUG_ID=
@@ -72,6 +87,179 @@ function Fundle._scriptify()
 	done
 
 	echo "$text"
+}
+
+function Fundle._generate_environment()
+{
+	local f="$1"
+	local i=0
+	local jid=
+	local jdir=
+
+	Plist.init_with_raw "json" '{}'
+
+	# Generate a job identifier and directory. These are kind of dummy values,
+	# since they refer to paths in the NFS hierarchy, but we generate them for
+	# completeness. And we might want to produce the job ourselves at some
+	# point, so might well make it look consistent.
+	jid="$(rands 12)"
+	jid+="-$(date "+%y-%m-%d-%H-%M")"
+	Plist.set_value "job_id" "string" "$jid"
+
+	jdir="/demand/demand/Jobs/$jid"
+	Plist.set_value "job_dir" "string" "$jdir"
+	Plist.set_value "hardware_version" "Ignored"
+
+	for (( i = 0; i < ${#G_FUNDLE_JOB_BRANCHES[@]}; i += 2 )); do
+		local p=${G_FUNDLE_JOB_BRANCHES[$(( i + 0 ))]}
+		local b=${G_FUNDLE_JOB_BRANCHES[$(( i + 1 ))]}
+
+		Plist.set_value "$p" "$b"
+	done
+
+	for (( i = 0; i < ${#G_FUNDLE_PARAM_ENV_MAP[@]}; i += 4 )); do
+		local p=${G_FUNDLE_PARAM_ENV_MAP[$(( i + 0 ))]}
+		local e=${G_FUNDLE_PARAM_ENV_MAP[$(( i + 1 ))]}
+		local t=${G_FUNDLE_PARAM_ENV_MAP[$(( i + 2 ))]}
+		local d=${G_FUNDLE_PARAM_ENV_MAP[$(( i + 3 ))]}
+		local v=
+		local arr=()
+
+		v=$(FunDotParams.get_value "$p")
+		if [ -z "$v" ]; then
+			continue
+		fi
+
+		case "$t" in
+		string)
+			Plist.set_value "$e" "string" "$v"
+			;;
+		array)
+			Plist.init_collection "$e" "$t"
+			arr=($(CLI.split_specifier_nospace "$d" "$v"))
+
+			for vi in "${#arr[@]}"; do
+				Plist.set_value "$e.$j" "string" "$vi"
+			done
+			;;
+		esac
+	done
+
+	Plist.get "json" > "$f"
+}
+
+function Fundle._generate_debug_tramp()
+{
+	local platform="$1"
+	local flavor="$2"
+	local f="$3"
+	local script=
+	local text=
+	local v_lvl=$(CLI.get_verbosity)
+	local v_map=(
+		"FLAVOR" "$flavor"
+		"GDB_WHERE" "$G_GDB"
+		"SERVER" "localhost"
+		"PORT" "1234"
+	)
+	local i=0
+
+	if [ "$v_lvl" -ge 2 ]; then
+		v_map+=("SET_MINUS_X" "t")
+	else
+		v_map+=("SET_MINUS_X" "")
+	fi
+
+	script="${dotfun}/libexec/debugme_$platform.sh"
+	CLI.die_fcheck "$script" "no debug trampoline for platform: $platform"
+
+	text=$(cat "$script")
+	for (( i = 0; i < ${#v_map[@]}; i += 2 )); do
+		local vn="${v_map[$(( $i + 0 ))]}"
+		local vv="${v_map[$(( $i + 1 ))]}"
+
+		vv=$(sed 's/\//\\\//g' <<< "$vv")
+		text=$(sed -E "s/\%$vn\%/$vv/g" <<< "$text")
+	done
+
+	echo "$text" > "$f"
+}
+
+function Fundle._run()
+{
+	local platform="$1"
+	local debug="$2"
+	local image=
+	local argv=()
+	local boot_args=()
+	local dpc_server=
+	local delim="--"
+
+	image=$(Assembly.get_image "FunOS" "rich")
+	CLI.die_ifz "$image" "no symbol-rich FunOS image to run"
+
+	# Boot args are delimited by spaces, so we can safely captyure this in an
+	# array.
+	boot_args=($(FunDotParams.get_value "BOOTARGS"))
+	dpc_server=$(grep -oE '\-\-dpc\-server' <<< "${boot_args[@]}")
+	case "$platform" in
+	posix)
+		if [ -n "$debug" ]; then
+			local xcode=
+			local debugserver=
+
+			xcode=$(xcode-select -p)
+			CLI.die_ifz "$xcode" "no Xcode installation for posix debugging"
+
+			debugserver="$xcode/../$G_LLDB_SERVER"
+			debugserver=$(realpath "$debugserver")
+			CLI.die_fcheck "$debugserver" "no debugserver found: $debugserver"
+
+			argv+=("$debugserver")
+			argv+=("localhost:4321")
+		fi
+
+		argv+=("$image")
+		for ba in ${boot_args[@]}; do
+			argv+=("$ba")
+		done
+
+		CLI.command "${argv[@]}"
+		;;
+	qemu)
+		argv+=("./scripts/qemu-dpu")
+		argv+=("--machine" "$(tolower $F_FUNDLE_CHIP)")
+
+		# For some reason, Qemu cannot set up a gdb listener and a serial port
+		# listener at the same time. So if the '--dpc-listener' boot-arg is
+		# present, then we pass only that option and don't set up gdb.
+		if [ -n "$dpc_server" ]; then
+			if [ -n "$debug" ]; then
+				CLI.status "--dpc-server boot-arg present, not setting up gdb"
+			fi
+
+			argv+=("-U")
+		elif [ -n "$debug" ]; then
+			argv+=("-s")
+			argv+=("-W")
+		fi
+		
+		argv+=("$image")
+		for ba in ${boot_args[@]}; do
+			if [ -n "$delim" ]; then
+				argv+=("$delim")
+				delim=
+			fi
+
+			argv+=("$ba")
+		done
+
+		Assembly.run_tool "FunSDK-small" "${argv[@]}"
+		;;
+	*)
+		CLI.die "unsupported platform: $platform"
+		;;
+	esac
 }
 
 # MARK: Meta
@@ -206,10 +394,14 @@ function Fundle.get_root()
 
 function Fundle.package()
 {
-	local which="$1"
+	local platform="$1"
+	local which="$2"
 	local boot_args="$F_FUNDLE_PATH/boot_args.txt"
 	local emails="$F_FUNDLE_PATH/emails.txt"
 	local params="$F_FUNDLE_PATH/test.params"
+	local env_dot_json="$F_FUNDLE_PATH/env.json"
+	local debugme="$F_FUNDLE_PATH/debugme.sh"
+	local cl_argv=
 	local script=
 	local ar="$(CLI.get_run_state_path "${F_FUNDLE_NAME}.tar.gz")"
 	local v_arg=$(CLI.get_verbosity_opt "v")
@@ -250,10 +442,34 @@ function Fundle.package()
 
 	script=$(Fundle._scriptify "$which")
 	echo "$script" > "$F_FUNDLE_PATH/fodit.sh"
+
+	Fundle._generate_environment "$env_dot_json"
+
+	case "$platform" in
+	qemu|posix)
+		Fundle._generate_debug_tramp "$platform" "$which" "$debugme"
+		CLI.command chmod u+x "$debugme"
+		;;
+	*)
+		;;
+	esac
+
 	FunDotParams.write "$params"
 
 	CLI.command tar -cz${v_arg}f "$ar" -C "$F_FUNDLE_PATH" .
 	F_FUNDLE_AR="$ar"
+}
+
+function Fundle.run()
+{
+	local platform="$1"
+	Fundle._run "$platform" ""
+}
+
+function Fundle.debug()
+{
+	local platform="$1"
+	Fundle._run "$platform" "debug"
 }
 
 function Fundle.submit()
