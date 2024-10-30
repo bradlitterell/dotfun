@@ -29,10 +29,13 @@ SDKDIR
 
 p,print-path                  Print the path to COMMAND without executing it
 
+H,command-help                Pass '-h' to the command
+
 $(CLI.get_global_blurb)
 "
 O_SDK="$SDKDIR"
 O_PRINT_PATH=
+O_HELP=
 O_COMMAND=
 
 # MARK: Command Implementation
@@ -78,6 +81,9 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
+		if [ -n "$O_HELP" ]; then
+			set -- -h
+		fi
 		CLI.command "$cmd" "$@"
 	fi
 }
@@ -103,6 +109,10 @@ function __main()
 			;;
 		-p | --print-path)
 			O_PRINT_PATH=t
+			shift
+			;;
+		-H | --command-help)
+			O_HELP=t
 			shift
 			;;
 		--)
