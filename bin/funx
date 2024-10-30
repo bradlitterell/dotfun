@@ -29,13 +29,10 @@ SDKDIR
 
 p,print-path                  Print the path to COMMAND without executing it
 
-H,command-help                Pass '-h' to the command
-
 $(CLI.get_global_blurb)
 "
 O_SDK="$SDKDIR"
 O_PRINT_PATH=
-O_HELP=
 O_COMMAND=
 
 # MARK: Command Implementation
@@ -81,9 +78,6 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
-		if [ -n "$O_HELP" ]; then
-			set -- -h
-		fi
 		CLI.command "$cmd" "$@"
 	fi
 }
@@ -92,9 +86,10 @@ function __main()
 {
 	local me="$(basename ${BASH_SOURCE[0]})"
 
-	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	CLI.init_trampoline "$me" "$GIT_PARSEOPT_SPEC" "$@"
 	eval "$(echo "$GIT_PARSEOPT_SPEC" |
-		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+		git rev-parse --parseopt --keep-dashdash --stuck-long \
+				--stop-at-non-option -- "$@" \
 				|| echo exit $?
 	)"
 
@@ -109,10 +104,6 @@ function __main()
 			;;
 		-p | --print-path)
 			O_PRINT_PATH=t
-			shift
-			;;
-		-H | --command-help)
-			O_HELP=t
 			shift
 			;;
 		--)
