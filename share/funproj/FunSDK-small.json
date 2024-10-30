@@ -2,7 +2,7 @@
     "Name": "FunSDK-small",
     "URL": "fungible://FunSDK-small",
     "BuildVerbosityFormat": "dV",
-    "BuildCommand": "./scripts/bob --sdkup",
+    "BuildCommand": "./scripts/bob --sdkup -v current",
     "CleanCommand": "./scripts/bob --clean-all",
     "BuildStyles":
     {

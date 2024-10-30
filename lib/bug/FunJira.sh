@@ -44,6 +44,7 @@ F_FUNJIRA_USERNAME=
 F_FUNJIRA_SECRETS=
 F_FUNJIRA_KEY=
 F_FUNJIRA_ISSUE=
+F_FUNJIRA_TIMEOUT=5
 F_FUNJIRA_UPDATE_FIELDS=()
 F_FUNJIRA_UPDATE_PROPERTIES=()
 F_FUNJIRA_UPDATE_TRANSITIONS=()
@@ -74,12 +75,14 @@ function FunJira._api()
 	pw=$(FunJira._get_password)
 	CLI.die_ifz $? "failed to get jira password for $F_FUNJIRA_USERNAME"
 
+	# The Jira server is a bit flaky, so we just always use a timeout.
 	auth="${F_FUNJIRA_USERNAME}:$pw"
 	if [ -n "$data" ]; then
 		CLI.debug "sending request: $which: $url: $data"
 		r=$(CLI.command curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
+				-m "$F_FUNJIRA_TIMEOUT" \
 				-d "$data" \
 				-K- \
 				"$url" <<< "--user $auth")
@@ -88,6 +91,7 @@ function FunJira._api()
 		r=$(CLI.command curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
+				-m "$F_FUNJIRA_TIMEOUT" \
 				-K- \
 				"$url" <<< "--user $auth")
 	fi
@@ -421,6 +425,12 @@ function FunJira.init_problem()
 	F_FUNJIRA_ISSUE="$n"
 	Module.config 0 "fungible jira issue"
 	Module.config 1 "identifier" "$F_FUNJIRA_ISSUE"
+}
+
+function FunJira.set_request_timeout()
+{
+	local to="$1"
+	F_FUNJIRA_TIMEOUT=$to
 }
 
 function FunJira.query_tracker_property()
