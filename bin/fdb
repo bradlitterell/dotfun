@@ -61,7 +61,7 @@ function __qemu_attach()
 		gdb_argv+=("--ex" "$cmd")
 	done
 
-	gdb_argv+=("$O_IMAGE")
+	gdb_argv+=("$O_IMAGE_OR_CORE")
 
 	shift 2
 	CLI.command "${gdb_argv[@]}" "$@"
@@ -73,7 +73,7 @@ function __posix_attach()
 	local gdbserver="$2"
 	local cmds=(
 		"-O"
-		"target create $O_IMAGE"
+		"target create $O_IMAGE_OR_CORE"
 		"-O"
 		"gdb-remote localhost:$G_POSIX_PORT"
 	)
