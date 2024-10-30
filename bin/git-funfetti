@@ -53,12 +53,7 @@ a test bundle
     fod            masters the test bundle and submits it to the Fun-on-Demand \
 service for testing -- this can only be used for the 'soc' PLATFORM
     run            masters the test bundle and runs it locally -- this can \
-only be used for the 'posix' and 'qemu' PLATFORMS. A DPC listener is set up on \
-port 40222
-    debug          masters the test bundle and starts a debug server instance \
-to debug the image. This can only be used for the 'posix' and 'qemu'
-PLATFORMS, and the program will be suspended at the first instruction. Due to \
-limitations in our Qemu, the DPC listener is not available when debugging
+only be used for the 'posix' and 'qemu' PLATFORMS
 
 The following firmwares are supported and may be given as arguments to the \
 f,firmware option:
@@ -106,6 +101,10 @@ dependencies for a firmware are discovered, the tags from this collection are \
 used. If not provided, the base tag of the working git repository is assumed \
 to be a valid tag for each project in the assembly and used as the base
 
+w,working-repository         Perform the build of the working repository \
+firmware directly from the working repository, rather than checking out the \
+base tag and merging it in a separate repository clone
+
 P,parameters=DOT-PARAMS-FILE \
                              Perform the build and test according to the \
 parameters in DOT-PARAMS-FILE. If email addresses and boot-args are specified \
@@ -147,12 +146,21 @@ that should receive status updates for the job. This can be specified multiple \
 times. The email address in the user.email gitconfig(7) variable of the \
 working repository is included implicitly
 
+ Options for 'run' and 'debug'
+g,debug?=PORT                 Runs FunOS with a debug server attached and \
+optionally advertising on PORT. Qemu targets will advertise on port 1234 by \
+default, and POSIX targets will advertise on port 4321 by default
+
+S,dpc-server                  Enable the data plane control (DPC) server on \
+FunOS when using the 'run' or 'debug' actions
+
 $(CLI.get_global_blurb)
 "
 
 O_FIRMWARES=()
 O_BRANCHES=()
 O_TAG_COLLECTION=
+O_WORKING_REPOSITORY=
 O_PARAMETERS=
 O_BUILD_CYCLE=
 O_STYLES=()
@@ -161,6 +169,8 @@ O_VARIANT=
 O_HOST=
 O_OUTPUT_BUNDLE=
 O_EMAIL_ADDRESSES=()
+O_DEBUG_SERVER=
+O_DPC_SERVER=
 
 O_ACTION=
 O_ACTIONS=()
@@ -284,6 +294,7 @@ function init_assembly()
 function __build()
 {
 	local chip="$1"
+	local opts="$2"
 	local target=
 	local variant=
 	local cflags=
@@ -342,6 +353,14 @@ function __build()
 		Assembly.set_build_cycle "$O_BUILD_CYCLE"
 	fi
 
+	if [ -n "$O_WORKING_REPOSITORY" ]; then
+		local p="$(Git.get_name)"
+		local g="$(Git.get_worktree)"
+
+		g=$(realpath "$g")
+		Assembly.set_repository_clone "$p" "$g"
+	fi
+
 	Assembly.assemble
 	CLI.die_check $? "DPU assembly failed"
 }
@@ -349,6 +368,7 @@ function __build()
 function __master()
 {
 	local chip="$1"
+	local opts="$2"
 	local email=$(Git.run config user.email)
 	local imgroot=$(Assembly.get_image_root)
 	local bug_id=
@@ -370,7 +390,7 @@ function __master()
 		Fundle.add_email "$em"
 	done
 
-	shift
+	shift 2
 	for ba in "$@"; do
 		Fundle.add_boot_arg "$ba"
 	done
@@ -399,6 +419,7 @@ function __master()
 function __fod()
 {
 	local chip="$1"
+	local opts="$2"
 	local v_arg=$(CLI.get_verbosity_opt "dv")
 
 	# Check to see if we're set up for ssh keys on the host. Note that the
@@ -420,13 +441,17 @@ function __fod()
 function __run()
 {
 	local chip="$1"
-	Fundle.run "$O_PLATFORM"
+	local opts="$2"
+
+	Fundle.run "$O_PLATFORM" "$opts"
 }
 
 function __debug()
 {
 	local chip="$1"
-	Fundle.debug "$O_PLATFORM"
+	local opts="$2"
+
+	Fundle.run "$O_PLATFORM" "debug $opts"
 }
 
 # MARK: Command Implementation
@@ -436,6 +461,7 @@ function __cmd()
 	local m=
 	local m_platform=
 	local chip=
+	local run_opts=
 
 	md=$(Fundle.get_model_descriptor "$O_PRODUCT")
 	CLI.die_ifz "$md" "failed to get machine descriptor: $O_PRODUCT"
@@ -472,15 +498,27 @@ function __cmd()
 			CLI.die "platform not supported for $O_ACTION: $O_PLATFORM"
 		fi
 		;;
-	debug)
+	run|debug)
+		local sep=''
+
 		if [ "$O_PLATFORM" != "posix" ] && [ "$O_PLATFORM" != "qemu" ]; then
 			CLI.die "platform not supported for $O_ACTION: $O_PLATFORM"
+		fi
+
+		if [ -n "$O_DEBUG_SERVER" ]; then
+			run_opts+="${sep}debug"
+			sep=' '
+		fi
+
+		if [ -n "$O_DPC_SERVER" ]; then
+			run_opts+="${sep}dpc"
+			sep=' '
 		fi
 		;;
 	esac
 
 	for a in ${O_ACTIONS[@]}; do
-		$a "$chip" "$@"
+		$a "$chip" "$run_opts" "$@"
 	done
 }
 
@@ -528,6 +566,10 @@ function __main()
 			O_TAG_COLLECTION="$arg"
 			shift
 			;;
+		-w | --working-repository)
+			O_WORKING_REPOSITORY=t
+			shift
+			;;
 		-P | --parameters=*)
 			O_PARAMETERS="$arg"
 			shift
@@ -571,6 +613,19 @@ function __main()
 			;;
 		-m | --email-address=*)
 			O_EMAIL_ADDRESSES+=("$arg")
+			shift
+			;;
+		-g | --debug-server*)
+			O_DEBUG_SERVER=t
+
+			arg_opt=($(CLI.parse_option_argument "$1"))
+			if [ -n "${arg_opt[1]}" ]; then
+				O_DEBUG_SERVER=${arg_opt[1]}
+			fi
+			shift
+			;;
+		-S | --dpc-server)
+			O_DPC_SERVER=t
 			shift
 			;;
 		--)

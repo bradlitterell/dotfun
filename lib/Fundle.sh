@@ -185,81 +185,41 @@ function Fundle._generate_debug_tramp()
 	echo "$text" > "$f"
 }
 
-function Fundle._run()
+function Fundle._generate_qemu_tramp()
 {
-	local platform="$1"
-	local debug="$2"
-	local image=
-	local argv=()
-	local boot_args=()
-	local dpc_server=
-	local delim="--"
+	local flavor="$1"
+	local f="$2"
+	local qemu=
+	local script=
+	local text=
+	local v_lvl=$(CLI.get_verbosity)
+	local v_map=(
+		"FLAVOR" "$flavor"
+		"CHIP" "$(tolower $F_FUNDLE_CHIP)"
+	)
+	local i=0
 
-	image=$(Assembly.get_image "FunOS" "rich")
-	CLI.die_ifz "$image" "no symbol-rich FunOS image to run"
+	qemu=$(Assembly.get_tool_path "FunSDK-small" "scripts/qemu-dpu")
+	CLI.die_ifz "$qemu" "qemu trampoline not found"
 
-	# Boot args are delimited by spaces, so we can safely captyure this in an
-	# array.
-	boot_args=($(FunDotParams.get_value "BOOTARGS"))
-	dpc_server=$(grep -oE '\-\-dpc\-server' <<< "${boot_args[@]}")
-	case "$platform" in
-	posix)
-		if [ -n "$debug" ]; then
-			local xcode=
-			local debugserver=
+	v_map+=("QEMU_WHERE" "$qemu")
+	if [ "$v_lvl" -ge 2 ]; then
+		v_map+=("SET_MINUS_X" "t")
+	else
+		v_map+=("SET_MINUS_X" "")
+	fi
 
-			xcode=$(xcode-select -p)
-			CLI.die_ifz "$xcode" "no Xcode installation for posix debugging"
+	script="${dotfun}/libexec/qemume.sh"
+	text=$(cat "$script")
+	for (( i = 0; i < ${#v_map[@]}; i += 2 )); do
+		local vn="${v_map[$(( $i + 0 ))]}"
+		local vv="${v_map[$(( $i + 1 ))]}"
 
-			debugserver="$xcode/../$G_LLDB_SERVER"
-			debugserver=$(realpath "$debugserver")
-			CLI.die_fcheck "$debugserver" "no debugserver found: $debugserver"
+		vv=$(sed 's/\//\\\//g' <<< "$vv")
+		text=$(sed -E "s/\%$vn\%/$vv/g" <<< "$text")
+	done
 
-			argv+=("$debugserver")
-			argv+=("localhost:4321")
-		fi
-
-		argv+=("$image")
-		for ba in ${boot_args[@]}; do
-			argv+=("$ba")
-		done
-
-		CLI.command "${argv[@]}"
-		;;
-	qemu)
-		argv+=("./scripts/qemu-dpu")
-		argv+=("--machine" "$(tolower $F_FUNDLE_CHIP)")
-
-		# For some reason, Qemu cannot set up a gdb listener and a serial port
-		# listener at the same time. So if the '--dpc-listener' boot-arg is
-		# present, then we pass only that option and don't set up gdb.
-		if [ -n "$dpc_server" ]; then
-			if [ -n "$debug" ]; then
-				CLI.status "--dpc-server boot-arg present, not setting up gdb"
-			fi
-
-			argv+=("-U")
-		elif [ -n "$debug" ]; then
-			argv+=("-s")
-			argv+=("-W")
-		fi
-		
-		argv+=("$image")
-		for ba in ${boot_args[@]}; do
-			if [ -n "$delim" ]; then
-				argv+=("$delim")
-				delim=
-			fi
-
-			argv+=("$ba")
-		done
-
-		Assembly.run_tool "FunSDK-small" "${argv[@]}"
-		;;
-	*)
-		CLI.die "unsupported platform: $platform"
-		;;
-	esac
+	echo "$text" > "$f"
 }
 
 # MARK: Meta
@@ -401,6 +361,7 @@ function Fundle.package()
 	local params="$F_FUNDLE_PATH/test.params"
 	local env_dot_json="$F_FUNDLE_PATH/env.json"
 	local debugme="$F_FUNDLE_PATH/debugme.sh"
+	local qemume="$F_FUNDLE_PATH/qemume.sh"
 	local cl_argv=
 	local script=
 	local ar="$(CLI.get_run_state_path "${F_FUNDLE_NAME}.tar.gz")"
@@ -449,6 +410,11 @@ function Fundle.package()
 	qemu|posix)
 		Fundle._generate_debug_tramp "$platform" "$which" "$debugme"
 		CLI.command chmod u+x "$debugme"
+
+		if [ "$platform" = "qemu" ]; then
+			Fundle._generate_qemu_tramp "$which" "$qemume"
+			CLI.command chmod u+x "$qemume"
+		fi
 		;;
 	*)
 		;;
@@ -463,13 +429,94 @@ function Fundle.package()
 function Fundle.run()
 {
 	local platform="$1"
-	Fundle._run "$platform" ""
-}
+	local opts="$2"
+	local debug=
+	local dpc=
+	local wait=
+	local image=
+	local argv=()
+	local boot_args=()
 
-function Fundle.debug()
-{
-	local platform="$1"
-	Fundle._run "$platform" "debug"
+	debug=$(grep -oE 'debug' <<< "$opts")
+	dpc=$(grep -oE 'dpc' <<< "$opts")
+
+	image=$(Assembly.get_image "FunOS" "rich")
+	CLI.die_ifz "$image" "no symbol-rich FunOS image to run"
+
+	# Boot args are delimited by spaces, so we can safely capture this in an
+	# array.
+	boot_args=($(FunDotParams.get_value "BOOTARGS"))
+	case "$platform" in
+	posix)
+		local need_dpc_server="$dpc"
+
+		# We don't have to do anything special for DPC in POSIX, since the
+		# presence of the boot-arg will set up the TCP listener.
+		if [ -n "$debug" ]; then
+			local xcode=
+			local debugserver=
+
+			xcode=$(xcode-select -p)
+			CLI.die_ifz "$xcode" "no Xcode installation for posix debugging"
+
+			debugserver="$xcode/../$G_LLDB_SERVER"
+			debugserver=$(realpath "$debugserver")
+			CLI.die_fcheck "$debugserver" "no debugserver found: $debugserver"
+
+			argv+=("$debugserver")
+			argv+=("localhost:4321")
+		fi
+
+		argv+=("$image")
+		for ba in ${boot_args[@]}; do
+			# If the boot-args already have '--dpc-server', then we don't need
+			# to add it if the user requested a DPC server at the command line.
+			if [ "$ba" = "--dpc-server" ]; then
+				need_dpc_server=
+			fi
+
+			argv+=("$ba")
+		done
+
+		if [ -n "$need_dpc_server" ]; then
+			argv+=("--dpc-server")
+		fi
+
+		CLI.command "${argv[@]}"
+		;;
+	qemu)
+		local delim="--"
+
+		argv+=("scripts/qemu-dpu")
+		argv+=("--machine" "$(tolower $F_FUNDLE_CHIP)")
+
+		# If we are running through Qemu, we have to set up the DPC uart in
+		# Qemu with the -U option.
+		if [ -n "$dpc" ]; then
+			argv+=("-U")
+		fi
+
+		if [ -n "$debug" ]; then
+			argv+=("-s")
+			argv+=("-W")
+		fi
+		
+		argv+=("$image")
+		for ba in ${boot_args[@]}; do
+			if [ -n "$delim" ]; then
+				argv+=("$delim")
+				delim=
+			fi
+
+			argv+=("$ba")
+		done
+
+		Assembly.run_tool "FunSDK-small" "${argv[@]}"
+		;;
+	*)
+		CLI.die "unsupported platform: $platform"
+		;;
+	esac
 }
 
 function Fundle.submit()
