@@ -1,0 +1,134 @@
+#!/bin/bash -O extglob
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+
+# Usage
+GIT_PARSEOPT_SPEC="\
+funx COMMAND [ARGUMENT ARGUMENT ...]
+
+Finds COMMAND in FunSDK and runs it with the given argument list. COMMAND may \
+refer to a shell script or Python script with or without the corresponding \
+'.sh' or '.py' suffixes.
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+k,sdk=SDK-DIRECTORY           Search for COMMAND in SDK-DIRECTORY rather than \
+SDKDIR
+
+p,print-path                  Print the path to COMMAND without executing it
+
+$(CLI.get_global_blurb)
+"
+O_SDK="$SDKDIR"
+O_PRINT_PATH=
+O_COMMAND=
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local pred="$O_COMMAND"
+	local candidates=()
+	local cmd=
+
+	# If the user specified the suffix, then we want an exact match on it.
+	# Otherwise, we'll use what the user specified as a base name.
+	case "$pred" in
+	*.sh|*.py)
+		;;
+	*)
+		pred+='*'
+		;;
+	esac
+
+	candidates=($(CLI.command find "$O_SDK" -name "$pred"))
+	if [ ${#candidates[@]} -eq 0 ]; then
+		CLI.die "no candidates found for command: $O_COMMAND"
+	fi
+
+	for c in "${candidates[@]}"; do
+		CLI.status "evaluating candidate: $c"
+
+		# Skip Linux tools.
+		if [[ "$c" =~ Linux ]]; then
+			CLI.status "candidate is Linux-specific: $c"
+			continue
+		fi
+
+		if [ -x "$c" ]; then
+			CLI.status "candidate is executable: $c"
+			cmd="$c"
+			break
+		fi
+	done
+
+	CLI.die_ifz "$cmd" "no executable candidates found"
+
+	if [ -n "$O_PRINT_PATH" ]; then
+		echo "$cmd"
+	else
+		CLI.command "$cmd" "$@"
+	fi
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		case "$1" in
+		-k | --sdk=*)
+			O_SDK="$arg"
+			shift
+			;;
+		-p | --print-path)
+			O_PRINT_PATH=t
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-rev-parse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	if [ $# -lt 1 ]; then
+		CLI.die_noopt "command name"
+	fi
+
+	O_COMMAND="$1"
+	shift
+
+	__cmd "$@"
+}
+
+__main "$@"
