@@ -15,31 +15,62 @@ libdir="${dotfiles}/lib"
 
 # Usage
 GIT_PARSEOPT_SPEC="\
-funx COMMAND [ARGUMENT ARGUMENT ...]
+funx [sdk|tool] COMMAND [ARGUMENT ARGUMENT ...]
 
-Finds COMMAND in FunSDK and runs it with the given argument list. COMMAND may \
-refer to a shell script or Python script with or without the corresponding \
-'.sh' or '.py' suffixes.
+Finds COMMAND in the specified SDK or contributor and runs it with the given \
+argument list. COMMAND may refer to a shell script or Python script with or \
+without the corresponding '.sh' or '.py' suffixes.
+
+The first positional argument may be provided and accepts the following values:
+
+    sdk         Search FunSDK for COMMAND
+    tool        Search FunTools for COMMAND
+
+If unspecified, 'sdk' is assumed.
 
 $(CLI.get_stuckopt_blurb)
 --
  Available options
-k,sdk=SDK-DIRECTORY           Search for COMMAND in SDK-DIRECTORY rather than \
-SDKDIR
+r,search-root=SEARCH-ROOT     Search for COMMAND in SEARCH-ROOT
 
 p,print-path                  Print the path to COMMAND without executing it
 
 $(CLI.get_global_blurb)
 "
-O_SDK="$SDKDIR"
+O_SEARCH_ROOT=
 O_PRINT_PATH=
 O_COMMAND=
+
+# MARK: Utilities
+function best_match()
+{
+	local existing="$1"
+	local candidate="$2"
+	local base_existing=$(basename "$existing")
+	local base_candidate=$(basename "$candidate")
+
+	# There is no existing match, so the candidate wins.
+	if [ -z "$existing" ]; then
+		echo "$candidate"
+		return
+	fi
+
+	# We go with the shortest name match.
+	if [ ${#base_candidate} -lt ${#base_existing} ]; then
+		echo "$candidate"
+		return
+	fi
+
+	echo "$existing"
+	return
+}
 
 # MARK: Command Implementation
 function __cmd()
 {
 	local pred="$O_COMMAND"
 	local candidates=()
+	local best_match=
 	local cmd=
 
 	# If the user specified the suffix, then we want an exact match on it.
@@ -48,11 +79,12 @@ function __cmd()
 	*.sh|*.py)
 		;;
 	*)
+		best_match=t
 		pred+='*'
 		;;
 	esac
 
-	candidates=($(CLI.command find "$O_SDK" -name "$pred"))
+	candidates=($(CLI.command find "$O_SEARCH_ROOT" -name "$pred"))
 	if [ ${#candidates[@]} -eq 0 ]; then
 		CLI.die "no candidates found for command: $O_COMMAND"
 	fi
@@ -66,10 +98,24 @@ function __cmd()
 			continue
 		fi
 
-		if [ -x "$c" ]; then
+		# Skip anything in the git directory.
+		if [[ "$c" =~ \/.git\. ]]; then
+			continue
+		fi
+
+		# Skip anything that's not executable.
+		if [ ! -x "$c" ]; then
+			continue
+		fi
+
+		# We found a candidate. If we were going with an exact match, then we're
+		# good. But if we were fuzzy matching, find the shortest match.
+		if [ -z "$best_match" ]; then
 			CLI.status "candidate is executable: $c"
 			cmd="$c"
 			break
+		else
+			cmd="$(best_match "$cmd" "$c")"
 		fi
 	done
 
@@ -98,8 +144,8 @@ function __main()
 		local arg_opt=()
 
 		case "$1" in
-		-k | --sdk=*)
-			O_SDK="$arg"
+		-r | --search-root=*)
+			O_SEARCH_ROOT="$arg"
 			shift
 			;;
 		-p | --print-path)
@@ -121,6 +167,25 @@ function __main()
 			;;
 		esac
 	done
+
+	case "$1" in
+	sdk)
+		if [ -z "$O_SEARCH_ROOT" ]; then
+			O_SEARCH_ROOT="$SDKDIR"
+		fi
+		shift
+		;;
+	tool)
+		if [ -z "$O_SEARCH_ROOT" ]; then
+			O_SEARCH_ROOT="$SDKDIR/../FunTools"
+			O_SEARCH_ROOT=$(realpath "$O_SEARCH_ROOT")
+		fi
+		shift
+		;;
+	*)
+		O_SEARCH_ROOT="$SDKDIR"
+		;;
+	esac
 
 	if [ $# -lt 1 ]; then
 		CLI.die_noopt "command name"
