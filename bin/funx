@@ -32,13 +32,16 @@ $(CLI.get_stuckopt_blurb)
 --
  Available options
 r,search-root=SEARCH-ROOT     Search for COMMAND in SEARCH-ROOT
-
 p,print-path                  Print the path to COMMAND without executing it
+w,working-directory           Change the working directory to the SDK. Some \
+tools require being run from within the SDK, and this option makes that a bit \
+easier
 
 $(CLI.get_global_blurb)
 "
 O_SEARCH_ROOT=
 O_PRINT_PATH=
+O_WORKING_DIRECTORY=
 O_COMMAND=
 
 # MARK: Utilities
@@ -124,6 +127,11 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
+		if [ -n "$O_WORKING_DIRECTORY" ]; then
+			CLI.status "changing working directory to: $O_WORKING_DIRECTORY"
+			cd "$O_WORKING_DIRECTORY"
+		fi
+
 		PYTHONWARNINGS=ignore CLI.command "$cmd" "$@"
 	fi
 }
@@ -150,6 +158,10 @@ function __main()
 			;;
 		-p | --print-path)
 			O_PRINT_PATH=t
+			shift
+			;;
+		-w | --working-directory)
+			O_WORKING_DIRECTORY="$SDKDIR"
 			shift
 			;;
 		--)
