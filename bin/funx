@@ -124,7 +124,7 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
-		CLI.command "$cmd" "$@"
+		PYTHONWARNINGS=ignore CLI.command "$cmd" "$@"
 	fi
 }
 
