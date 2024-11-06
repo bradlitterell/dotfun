@@ -33,7 +33,9 @@ $(CLI.get_stuckopt_blurb)
  Available options
 r,search-root=SEARCH-ROOT     Search for COMMAND in SEARCH-ROOT
 p,print-path                  Print the path to COMMAND without executing it
-w,working-directory           Change the working directory to the SDK. Some \
+w,working-directory?SUB-DIRECTORY \
+Change the working directory to the SUB-DIRECTORY path in the SDK. If \
+SUB-DIRECTORY is not provided, then the root of the SDK will be used. Some \
 tools require being run from within the SDK, and this option makes that a bit \
 easier
 
@@ -166,12 +168,12 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
+		release_dot_py_hacks "$cmd"
+
 		if [ -n "$O_WORKING_DIRECTORY" ]; then
 			CLI.status "changing working directory to: $O_WORKING_DIRECTORY"
 			cd "$O_WORKING_DIRECTORY"
 		fi
-
-		release_dot_py_hacks "$cmd"
 		PYTHONWARNINGS=ignore CLI.command "$cmd" "$@"
 	fi
 }
@@ -179,6 +181,8 @@ function __cmd()
 function __main()
 {
 	local me="$(basename ${BASH_SOURCE[0]})"
+	local sub=
+	local sep=
 
 	CLI.init_trampoline "$me" "$GIT_PARSEOPT_SPEC" "$@"
 	eval "$(echo "$GIT_PARSEOPT_SPEC" |
@@ -200,8 +204,13 @@ function __main()
 			O_PRINT_PATH=t
 			shift
 			;;
-		-w | --working-directory)
-			O_WORKING_DIRECTORY="$SDKDIR"
+		-w | --working-directory*)
+			sub="$(CLI.get_option_argument "$1")"
+			if [ -n "$sub" ]; then
+				sep="/"
+			fi
+
+			O_WORKING_DIRECTORY="${SDKDIR}${sep}${sub}"
 			shift
 			;;
 		--)
