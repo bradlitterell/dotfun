@@ -1,0 +1,37 @@
+{
+    "output_format":
+    {
+        "size": "0x500000",
+        "page": "0x10000",
+        "output": "qspi_image_hw"
+    },
+    "output_sections":
+    {
+        "KEY_BAG":
+        {
+            "A": "key_bag.bin",
+            "B": "key_bag.bin",
+            "index": "2500"
+        }
+    },
+    "signed_images":
+    {
+        "key_bag.bin":
+        {
+            "source": "key_bag.keys.bin",
+            "version": 1,
+            "fourcc": "kbag",
+            "key": "fpk5",
+            "cert": "",
+            "customer_cert": "",
+            "description": ""
+        }
+    },
+    "ez": {
+        "name": "keybag",
+        "action": "sign",
+        "configs": [
+            "bin/flash_tools/key_bag_config.json"
+        ]
+    }
+}

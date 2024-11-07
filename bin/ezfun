@@ -1,0 +1,233 @@
+#!/bin/bash -O extglob
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Plist.sh"
+
+# Usage
+GIT_PARSEOPT_SPEC="\
+ezfun [options] EZCONF-SPEC CHIP
+
+Wrapper for release.py that automates preparation and building certain release \
+artifacts according to EZCONF-SPEC. Currently supported EZCONF-SPECs are
+
+	keybag              Generate a keybag
+
+$(CLI.get_stuckopt_blurb)
+--
+ Available options
+k,sdk=SDK               Use SDK as the SDK path. If unspecified, the SDKDIR \
+environment variable is used
+
+r,release-root=sdk|tool Where to find the release.py script. If 'sdk' is given,
+the copy in FunSDK will be used. If 'tool' is given, the copy in the FunTools \
+project which is a sibling of the FunSDK will be used
+
+o,output-directory=OUTPUT-DIRECTORY \
+						Write the resulting product to OUTPUT-DIRECTORY. This \
+path represents the root of the bundle, not the directory which contains the \
+bundle. Any required ancestor directories are created via 'mkdir -p', and the \
+bundle will be overwritten if it already exists. If unspecified, the bundle is \
+written to a temporary location
+
+$(CLI.get_global_blurb)
+"
+O_SDK="$SDKDIR"
+O_OUTPUT_DIRECTORY=
+O_RELEASE_ROOT=
+O_EZCONF_SPEC=
+O_CHIP=
+
+# MARK: Utilities
+function release_dot_py_hacks()
+{
+	local sdk="$1"
+	local mkimage_src=
+	local mkimage_dst="$sdk/bin/Linux/x86_64/mkimage"
+	local linux_pkgs=(
+		"nvdimm_firmware"
+		"deploy-base.mips64"
+		"mctp_daemon.mips64"
+	)
+
+	if [ $(uname) != "Darwin" ]; then
+		return
+	fi
+
+	CLI.status "doing release.py hacks for Darwin..."
+
+	CLI.command "$sdk/scripts/bob" --sdkup -H Linux "${linux_pkgs[@]}"
+	CLI.die_check $? "install Linux packages"
+
+	CLI.command brew install u-boot-tools
+	CLI.die_check $? "install mkimage"
+
+	mkimage_src=$(which mkimage)
+	CLI.die_ifz "$mkimage_src" "failed to find mkimage"
+
+	# We copy mkimage into the SDK rather than symlinking it because the release
+	# script will copy mkimage into the bundle, and Homebrew's permissions on
+	# stuff is generally non-writeable, so that would fail.
+	CLI.command mkdir -p "$sdk/bin/Linux/x86_64"
+	CLI.command rm "$mkimage_dst"
+
+	CLI.command cp "$mkimage_src" "$mkimage_dst"
+	CLI.die_check $? "copy mkimage"
+
+	CLI.command chmod u+w "$mkimage_dst"
+	CLI.die_check $? "chmod mkimage"
+}
+
+function link_sdk_core_hack()
+{
+	local src="$1"
+
+	CLI.pushdir "$src"
+
+	for f in funos-core-*; do
+		local link=$(sed 's/-core//;' <<< "$f")
+		CLI.command ln -sF "$f" "$link"
+	done
+
+	CLI.popdir
+}
+
+# MARK: Command Implementation
+function __cmd()
+{
+	local reldotpy="$O_SDK/bin/flash_tools/release.py"
+	local name=
+	local action=
+	local product=
+	local i=0
+	local configs_cnt=
+	local configs=(
+		"$O_EZCONF_SPEC"
+	)
+
+	Plist.init_with_file "$O_EZCONF_SPEC"
+	name=$(Plist.get_value "ez.name" "string")
+	CLI.die_ifz "$name" "no configuration name"
+
+	action=$(Plist.get_value "ez.action" "string")
+	CLI.die_ifz "$name" "no configuration action"
+
+	product="$(CLI.get_run_state_path "$O_CHIP.$name")"
+	CLI.command mkdir -p "$product"
+
+	configs_cnt=$(Plist.get_count "ez.configs")
+	for (( i = 0; i < configs_cnt; i++ )); do
+		local config=
+
+		config=$(Plist.get_value "ez.configs.$i" "string")
+		CLI.die_ifz "$config" "failed to get config at index: $i"
+
+		configs+=("$config")
+	done
+
+	CLI.pushdir "$O_SDK"
+	CLI.command "$reldotpy" \
+			--action "$action" \
+			--chip "$O_CHIP" \
+			--sdkdir "$O_SDK" \
+			--destdir "$product" \
+			"${configs[@]}"
+	CLI.die_check $? "generate artifact: $name"
+
+	if [ -n "$O_OUTPUT_DIRECTORY" ]; then
+		CLI.command mv "$product" "$O_OUTPUT_DIRECTORY/"
+	fi
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+	local spec=
+	local sub=
+	local sep=
+
+	CLI.init_trampoline "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long \
+				--stop-at-non-option -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
+
+		case "$1" in
+		-k | --sdk=*)
+			O_SDK="$arg"
+			shift
+			;;
+		-r | --release-root=*)
+			O_RELEASE_ROOT="$arg"
+			shift
+			;;
+		-o | --output-directory=*)
+			O_OUTPUT_DIRECTORY="$arg"
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-rev-parse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	case "$O_RELEASE_ROOT" in
+	sdk)
+		O_RELEASE_ROOT="$O_SDK"
+		;;
+	tool)
+		O_RELEASE_ROOT="$O_SDK/../FunTools"
+		O_RELEASE_ROOT=$(realpath "$O_RELEASE_ROOT")
+		;;
+	*)
+		O_RELEASE_ROOT="$O_SDK"
+		;;
+	esac
+
+	if [ $# -lt 2 ]; then
+		CLI.die_noopt "specification and chip"
+	fi
+
+	spec="$1"
+	O_EZCONF_SPEC=$(Module.find_resource "share/ezconf/$spec.json")
+	CLI.die_ifz "$O_EZCONF_SPEC" "no spec for: $spc"
+	shift
+
+	O_CHIP="$(tolower "$1")"
+	shift
+
+	if [ -z "$O_OUTPUT_DIRECTORY" ]; then
+		O_OUTPUT_DIRECTORY="$(CLI.get_run_state_path "${O_CHIP}.release")"
+	fi
+
+	release_dot_py_hacks "$O_SDK"
+	link_sdk_core_hack "$O_SDK/bin"
+	__cmd "$@"
+}
+
+__main "$@"

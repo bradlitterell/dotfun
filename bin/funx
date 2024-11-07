@@ -69,46 +69,6 @@ function best_match()
 	echo "$existing"
 }
 
-function release_dot_py_hacks()
-{
-	local cmd="$1"
-	local sdk="$SDKDIR"
-	local mkimage_src=
-	local mkimage_dst="$sdk/bin/Linux/x86_64/mkimage"
-
-	if [ $(uname) != "Darwin" ]; then
-		return
-	fi
-
-	cmd="$(basename "$cmd")"
-	if [ "$cmd" != "release.py" ]; then
-		return
-	fi
-
-	CLI.status "doing release.py hacks for Darwin..."
-
-	CLI.command "$sdk/scripts/bob" --sdkup -H Linux nvdimm_firmware
-	CLI.die_check $? "install nvdimm_firmware"
-
-	CLI.command brew install u-boot-tools
-	CLI.die_check $? "install mkimage"
-
-	mkimage_src=$(which mkimage)
-	CLI.die_ifz "$mkimage_src" "failed to find mkimage"
-
-	# We copy mkimage into the SDK rather than symlinking it because the release
-	# script will copy mkimage into the bundle, and Homebrew's permissions on
-	# stuff is generally non-writeable, so that would fail.
-	CLI.command mkdir -p "$sdk/bin/Linux/x86_64"
-	CLI.command rm "$mkimage_dst"
-
-	CLI.command cp "$mkimage_src" "$mkimage_dst"
-	CLI.die_check $? "copy mkimage"
-
-	CLI.command chmod u+w "$mkimage_dst"
-	CLI.die_check $? "chmod mkimage"
-}
-
 # MARK: Command Implementation
 function __cmd()
 {
@@ -188,8 +148,6 @@ function __cmd()
 	if [ -n "$O_PRINT_PATH" ]; then
 		echo "$cmd"
 	else
-		release_dot_py_hacks "$cmd"
-
 		if [ -n "$O_WORKING_DIRECTORY" ]; then
 			CLI.status "changing working directory to: $O_WORKING_DIRECTORY"
 			cd "$O_WORKING_DIRECTORY"
