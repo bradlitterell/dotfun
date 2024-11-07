@@ -116,6 +116,7 @@ function __cmd()
 	local candidates=()
 	local best_match=
 	local cmd=
+	local cmd_tramp=
 
 	# If the user specified the suffix, then we want an exact match on it.
 	# Otherwise, we'll use what the user specified as a base name.
@@ -134,6 +135,8 @@ function __cmd()
 	fi
 
 	for c in "${candidates[@]}"; do
+		local tramp=
+
 		CLI.status "evaluating candidate: $c"
 
 		# Skip Linux tools.
@@ -144,22 +147,39 @@ function __cmd()
 
 		# Skip anything in the git directory.
 		if [[ "$c" =~ \/.git\. ]]; then
+			CLI.status "candidate is in git directory: $c"
 			continue
 		fi
 
-		# Skip anything that's not executable.
 		if [ ! -x "$c" ]; then
-			continue
+			case "$c" in
+			*.sh)
+				tramp="bash"
+				;;
+			*.py)
+				tramp="python3"
+				;;
+			*)
+				# If it's not executable and not obviously a Python or shell
+				# script, then just skip it.
+				CLI.status "candidate is not executable: $c"
+				continue
+				;;
+			esac
 		fi
 
 		# We found a candidate. If we were going with an exact match, then we're
 		# good. But if we were fuzzy matching, find the shortest match.
 		if [ -z "$best_match" ]; then
 			CLI.status "candidate is executable: $c"
+			cmd_tramp="$tramp"
 			cmd="$c"
 			break
 		else
 			cmd="$(best_match "$cmd" "$c")"
+			if [ "$cmd" = "$c" ]; then
+				cmd_tramp="$tramp"
+			fi
 		fi
 	done
 
@@ -174,7 +194,7 @@ function __cmd()
 			CLI.status "changing working directory to: $O_WORKING_DIRECTORY"
 			cd "$O_WORKING_DIRECTORY"
 		fi
-		PYTHONWARNINGS=ignore CLI.command "$cmd" "$@"
+		PYTHONWARNINGS=ignore CLI.command ${cmd_tramp} "${cmd}" "$@"
 	fi
 }
 
