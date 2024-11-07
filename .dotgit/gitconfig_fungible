@@ -23,5 +23,5 @@
 	tracker = FunJira
 	urlFormat = http://jira.fungible.local/browse/%PREFIX%%NUMBER%
 	username = dsorresso
-	regex = [0-9]{4,}
+	regex = [A-Z]+\\-[0-9]{4,}
 	trailer = Bug-Id
