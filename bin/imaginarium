@@ -21,6 +21,9 @@ G_CERTIFICATE_SECTION="certificate"
 G_AUTH_SECTION="auth header"
 G_SIGNING_INFO_CNT=2
 
+# Two signing info sections (customer and Fungible) plus the auth header are all
+# we need unless we're dumping the image's content.
+G_BUFFER_LEN=$(( (2048 * 2) + 76 ))
 G_FIRMWARE_LEN=0
 
 # Parsed options
@@ -282,7 +285,7 @@ function parse_image()
 	local callback="$2"	
 	local i=0
 	
-	Bytes.init_with_file "$image"
+	Bytes.init_with_file "$image" "$G_BUFFER_LEN"
 
 	# Images are signed with two signing info sections, one for the customer and
 	# one for Fungible. The customer certificate signs the Fungible certificate
@@ -380,47 +383,48 @@ function __cmd()
 
 function __main()
 {
-    local me="$(basename ${BASH_SOURCE[0]})"
+	local me="$(basename ${BASH_SOURCE[0]})"
 
-    CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
-    eval "$(echo "$GIT_PARSEOPT_SPEC" |
-        git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
-                || echo exit $?
-    )"
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
 
-    while [ $# -ne 0 ]; do
-        local arg="$(CLI.parse_argument "$1")"
-        local arg_opt=()
+	while [ $# -ne 0 ]; do
+		local arg="$(CLI.parse_argument "$1")"
+		local arg_opt=()
 
-        case "$1" in
-        -x | --decode)
-            O_ACTION=__decode
-            shift
-            ;;
-        --)
-            shift
-            break
-            ;;
-        -*)
-            # This was one of the common options that was already consumed by
-            # the CLI module. git-revparse will not have normalized an
-            # unrecognized option.
-            shift
-            ;;
-        *)
-            break
-            ;;
-        esac
-    done
+		case "$1" in
+		-x | --decode)
+			G_BUFFER_LEN=0
+			O_ACTION=__decode
+			shift
+			;;
+		--)
+			shift
+			break
+			;;
+		-*)
+			# This was one of the common options that was already consumed by
+			# the CLI module. git-revparse will not have normalized an
+			# unrecognized option.
+			shift
+			;;
+		*)
+			break
+			;;
+		esac
+	done
 
-    if [ $# -lt 1 ]; then
-        CLI.die_noopt "image file"
-    fi
+	if [ $# -lt 1 ]; then
+		CLI.die_noopt "image file"
+	fi
 
-    O_IMAGE="$1"
-    shift
+	O_IMAGE="$1"
+	shift
 
-    __cmd "$@"
+	__cmd "$@"
 }
 
 __main "$@"

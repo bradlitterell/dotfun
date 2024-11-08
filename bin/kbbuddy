@@ -83,7 +83,7 @@ function parse_keybag()
 	local pad=
 	local i=
 
-	Bytes.init_with_file "$kb"
+	Bytes.init_with_file "$kb" 0
 
 	# The keybag header is defined as...
 	#
