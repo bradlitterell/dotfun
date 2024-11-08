@@ -29,9 +29,9 @@ $(CLI.get_stuckopt_blurb)
 k,sdk=SDK               Use SDK as the SDK path. If unspecified, the SDKDIR \
 environment variable is used
 
-r,release-root=sdk|tool Where to find the release.py script. If 'sdk' is given,
-the copy in FunSDK will be used. If 'tool' is given, the copy in the FunTools \
-project which is a sibling of the FunSDK will be used
+r,release-root=sdk|tool Where to find the release.py script and config files. \
+If 'sdk' is given, the content FunSDK will be used. If 'tool' is given, the \
+content in the FunTools project which is a sibling of the FunSDK will be used
 
 o,output-directory=OUTPUT-DIRECTORY \
 						Write the resulting product to OUTPUT-DIRECTORY. This \
@@ -40,12 +40,18 @@ bundle. Any required ancestor directories are created via 'mkdir -p', and the \
 bundle will be overwritten if it already exists. If unspecified, the bundle is \
 written to a temporary location
 
+s,signing-service=SIGNING-SERVICE-URL-OR-ADDRESS[:PORT] \
+                        The URL of the signing service to use for image \
+generation. If no PORT is included, port 4443 is used to contact the service
+
 $(CLI.get_global_blurb)
 "
 O_SDK="$SDKDIR"
 O_OUTPUT_DIRECTORY=
 O_RELEASE_ROOT=
+O_RELEASE_SUBDIR=
 O_EZCONF_SPEC=
+O_SIGNING_SERVICE=
 O_CHIP=
 
 # MARK: Utilities
@@ -105,11 +111,12 @@ function link_sdk_core_hack()
 # MARK: Command Implementation
 function __cmd()
 {
-	local reldotpy="$O_SDK/bin/flash_tools/release.py"
+	local reldotpy=
 	local name=
 	local action=
 	local product=
 	local i=0
+	local config_root=
 	local configs_cnt=
 	local configs=(
 		"$O_EZCONF_SPEC"
@@ -128,14 +135,43 @@ function __cmd()
 	configs_cnt=$(Plist.get_count "ez.configs")
 	for (( i = 0; i < configs_cnt; i++ )); do
 		local config=
+		local where=
 
 		config=$(Plist.get_value "ez.configs.$i" "string")
 		CLI.die_ifz "$config" "failed to get config at index: $i"
 
-		configs+=("$config")
+		# If we're looking in the SDK, we can refer to the content by a relative
+		# path rooted in the subdirectory, which is bin by default. Otherwise,
+		# we're looking for content relative to the root of the FunTools
+		# project.
+		if [ "$O_RELEASE_ROOT" != "$O_SDK" ]; then
+			where="$O_RELEASE_ROOT"
+		else
+			where="$O_RELEASE_SUBDIR"
+		fi
+
+		configs+=("$where/$config")
 	done
 
+	if [ -n "$O_SIGNING_SERVICE" ]; then
+		local signing_ini=$(CLI.get_run_state_path "signing.ini")
+		local url="$O_SIGNING_SERVICE"
+
+		if [[ ! "$url" =~ ^http ]]; then
+			url="http://$url"
+		fi
+
+		if [[ ! "$url" =~ \:[0-9]+$ ]]; then
+			url+=":4443"
+		fi
+
+		echo "server_url = $url" > "$signing_ini"
+		export DPU_SIGNING_INI="$signing_ini"
+	fi
+
 	CLI.pushdir "$O_SDK"
+	reldotpy="$O_RELEASE_ROOT/$O_RELEASE_SUBDIR/flash_tools/release.py"
+
 	CLI.command "$reldotpy" \
 			--action "$action" \
 			--chip "$O_CHIP" \
@@ -143,8 +179,10 @@ function __cmd()
 			--destdir "$product" \
 			"${configs[@]}"
 	CLI.die_check $? "generate artifact: $name"
+	CLI.popdir
 
 	if [ -n "$O_OUTPUT_DIRECTORY" ]; then
+		CLI.command rm -r "$O_OUTPUT_DIRECTORY"
 		CLI.command mv "$product" "$O_OUTPUT_DIRECTORY/"
 	fi
 }
@@ -180,6 +218,10 @@ function __main()
 			O_OUTPUT_DIRECTORY="$arg"
 			shift
 			;;
+		-s | --signing-service=*)
+			O_SIGNING_SERVICE="$arg"
+			shift
+			;;
 		--)
 			shift
 			break
@@ -199,13 +241,16 @@ function __main()
 	case "$O_RELEASE_ROOT" in
 	sdk)
 		O_RELEASE_ROOT="$O_SDK"
+		O_RELEASE_SUBDIR="bin"
 		;;
 	tool)
 		O_RELEASE_ROOT="$O_SDK/../FunTools"
 		O_RELEASE_ROOT=$(realpath "$O_RELEASE_ROOT")
+		O_RELEASE_SUBDIR=
 		;;
 	*)
 		O_RELEASE_ROOT="$O_SDK"
+		O_RELEASE_SUBDIR="bin"
 		;;
 	esac
 
