@@ -25,6 +25,7 @@ G_SIGNING_INFO_CNT=2
 # we need unless we're dumping the image's content.
 G_BUFFER_LEN=$(( (2048 * 2) + 76 ))
 G_FIRMWARE_LEN=0
+G_FIRMWARE_SIGNATURE=
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\
@@ -36,13 +37,17 @@ is printed to stdout.
 $(CLI.get_stuckopt_blurb)
 --
  Available options
-x,decode                       decode the raw bytes of IMAGE and write them to \
+x,decode                       Decode the raw bytes of IMAGE and write them to \
 standard output. No other image information is written
+
+s,verify-signature=KEY-PEM-FILE \
+Verify the Fungible signature on IMAGE against KEY
 
 $(CLI.get_global_blurb)
 "
 
 O_ACTION=__print_header
+O_VERIFY_SIGNATURE=
 O_IMAGE=
 
 # MARK: Utilities
@@ -375,6 +380,49 @@ function __decode()
 	esac
 }
 
+function __verify_signature()
+{
+	local sect="$1"
+	local fld="$2"
+	local v="$3"
+	local sig=$(CLI.get_run_state_path "sig")
+	local img=$(CLI.get_run_state_path "img")
+	local img_len=
+	local tail_count=
+
+	case "$sect" in
+	certificate)
+		# The last signature we encounter will be the one on the image, so just
+		# store it unconditionally.
+		if [ "$fld" = "signature" ]; then
+			G_FIRMWARE_SIGNATURE="$v"
+		fi
+		;;
+	'auth header')
+		;;
+	end)
+		if [ -z "$G_FIRMWARE_SIGNATURE" ]; then
+			CLI.die "no image signature found"
+		fi
+
+		Bytes.to_raw_unsafe "$G_FIRMWARE_SIGNATURE" > "$sig"
+		
+		img_len=$(Bytes.get_file_size "$O_IMAGE")
+		tail_count=$(( img_len - G_BUFFER_LEN ))
+		tail -c "$tail_count" "$O_IMAGE" > "$img"
+
+		CLI.command openssl dgst -sha512 \
+				-verify "$O_VERIFY_SIGNATURE" \
+				-signature "$sig" \
+				"$img"
+		CLI.die_check $? "verify signature"
+		;;
+	*)
+		CLI.die "unsupported image section: $sect"
+		;;
+	esac
+}
+
 # MARK: Command Implementation
 function __cmd()
 {
@@ -399,6 +447,11 @@ function __main()
 		-x | --decode)
 			G_BUFFER_LEN=0
 			O_ACTION=__decode
+			shift
+			;;
+		-s | --verify-signature=*)
+			O_VERIFY_SIGNATURE="$arg"
+			O_ACTION=__verify_signature
 			shift
 			;;
 		--)
