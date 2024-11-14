@@ -4,3 +4,10 @@ Host fun-on-demand-*
 	HostKeyAlgorithms +ssh-rsa
 	PubkeyAcceptedKeyTypes +ssh-rsa
 	User dsorresso
+
+Host sw-bld-*
+	UseKeychain yes
+	AddKeysToAgent yes
+	HostKeyAlgorithms +ssh-rsa
+	PubkeyAcceptedKeyTypes +ssh-rsa
+	User dsorresso
