@@ -3,8 +3,11 @@
     "URL": "fungible://FunTest",
     "BuildVerbosityFormat": "dv",
     "BuildTool": "git archive",
-    "BuildCommand": "git archive -o ./FunTest.%INSTANCE%.tar.gz --format tgz HEAD",
-    "CleanCommand": "rm -f ./FunTest.%INSTANCE%.tar.gz",
+    "BuildCommands":
+    {
+        "Build": "git archive -o ./FunTest.%INSTANCE%.tar.gz --format tgz HEAD",
+        "Clean": "rm -f ./FunTest.%INSTANCE%.tar.gz"
+    },
     "BuildDirectory": ".",
     "TagPrefix": "bld_",
     "Images":

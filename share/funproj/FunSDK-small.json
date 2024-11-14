@@ -2,8 +2,11 @@
     "Name": "FunSDK-small",
     "URL": "fungible://FunSDK-small",
     "BuildVerbosityFormat": "dV",
-    "BuildCommand": "./scripts/bob --sdkup -v current",
-    "CleanCommand": "./scripts/bob --clean-all",
+    "BuildCommands":
+    {
+        "Build": "./scripts/bob --sdkup -v current --preserve-mtime -C %CCHROOT%",
+        "Clean": "./scripts/bob --clean-sdk"
+    },
     "BuildStyles":
     {
         "azure": "--azure",
