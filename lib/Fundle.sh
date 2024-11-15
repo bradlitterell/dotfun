@@ -199,7 +199,7 @@ function Fundle._generate_qemu_tramp()
 	)
 	local i=0
 
-	qemu=$(Assembly.get_tool_path "FunSDK-small" "scripts/qemu-dpu")
+	qemu=$(Assembly.get_tool_path "FunSDK" "scripts/qemu-dpu")
 	CLI.die_ifz "$qemu" "qemu trampoline not found"
 
 	v_map+=("QEMU_WHERE" "$qemu")
@@ -511,7 +511,7 @@ function Fundle.run()
 			argv+=("$ba")
 		done
 
-		Assembly.run_tool "FunSDK-small" "${argv[@]}"
+		Assembly.run_tool "FunSDK" "${argv[@]}"
 		;;
 	*)
 		CLI.die "unsupported platform: $platform"

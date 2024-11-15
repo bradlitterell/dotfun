@@ -13,6 +13,6 @@
     {},
     "Dependencies":
     [
-        "FunSDK-small"
+        "FunSDK"
     ]
 }

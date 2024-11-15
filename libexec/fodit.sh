@@ -37,6 +37,14 @@ if [ -f "images/FunTest/gzip" ]; then
 	fi
 fi
 
+# Same for FunSDK.
+if [ -f "images/FunSDK/gzip" ]; then
+	sdk=$(readlink "images/FunSDK/gzip")
+	if [ -n "$sdk" ]; then
+		sdk=" --other-image $d/images/FunSDK/$sdk"
+	fi
+fi
+
 v_arg=
 if [ -n "$SET_MINUS_X" ]; then
 	v_arg="-v"
@@ -73,6 +81,7 @@ run_f1='~robotpal/bin/run_f1.py'
 run_f1+=" --robot"
 run_f1+=" --params-file test.params"
 run_f1+="$tests"
+run_f1+="$sdk"
 run_f1+=" $d/images/FunOS/$image"
 
 # The job identifier is written to stderr, so redirect it to stdout for capture

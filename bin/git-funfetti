@@ -59,7 +59,7 @@ The following firmwares are supported and may be given as arguments to the \
 f,firmware option:
 
     FunOS          The main FunOS image
-    FunSDK-small   The minimal FunOS SDK required to build FunOS
+    FunSDK         The SDK required to build FunOS and its components
     FunTest        The repository where central test scripts reside
 
 Firmwares may be built for different platforms, and by default they are built \
@@ -110,12 +110,16 @@ parameters in DOT-PARAMS-FILE. If email addresses and boot-args are specified \
 at the command line, they will be appended to the values from DOT-PARAMS-FILE. \
 Other command line-supplied values will override those of the DOT-PARAMS-FILE
 
-B,build-cycle=full|iterative|skip \
-                             The type of build cycle to execute. A 'full' \
-build will perform the project's clean command and a 'git clean' of the \
-repository before building. An 'iterative' build will not perform either of \
-these operations before building. A 'skip' cycle will not perform any build \
-commands at all, and it expects the necessary artifacts to already exist
+B,build-cycle=skip|iterative|full|world \
+                             The type of build cycle to execute. A 'skip' \
+cycle does not perform any build actions at all, and it expects any images to \
+have already been produced. An 'iterative' cycle re-runs each project's Build \
+command to take advantage of any dependency tracking, and best efforts are \
+made to not change mtimes on files which have not changed since the last \
+successful merge of a branch. A 'full' build will perform each project's Clean \
+command before building. A 'world' build will perform each project's CleanSDK \
+and InstallSDK commands before building each project. If unspecified, a 'full' \
+build is performed
 
 s,build-style=FIRMWARE:BUILD-STYLE \
                              Use the additional build options for BUILD-STYLE \
@@ -238,6 +242,30 @@ function assembly_callback()
 	CLI.status "got assembly callback: type = $type, project = $p"
 
 	case "$type" in
+	stage)
+		# If no build cycle was specified, and we're handling FunSDK in the
+		# dependency graph, then do a bit of guesswork to see if we need to do
+		# a world build, which will set up the SDK. This is re-entrant, but
+		# whatever, it's just bash. If we're merging multiple branches into
+		# FunSDK, this will happen each time, but it should always produce the
+		# same result, so we don't care. If this is the first clone of FunSDK,
+		# then we won't have a build_info.txt, and we'll do the world build.
+		if [ -z "$O_BUILD_CYCLE" ] && [ "$p" = "FunSDK" ] ; then
+			local v_build=$(q2 cat "build_info.txt")
+			local v_asm=$(Assembly._lookup_tag_have_project "$p" "t")
+
+			if [ "$v_build" != "$v_asm" ]; then
+				CLI.status "sdk mismatch; doing world build:" \
+						"built = $v_build, assembly base = $v_asm"
+				Assembly.set_build_cycle "world"
+			else
+				CLI.status "sdk does not need rebuilding:" \
+						"built = $v_build, assembly base = $v_asm"
+			fi
+		fi
+		;;
+	merge)
+		;;
 	image)
 		local type="$3"
 		local img="$4"
@@ -249,44 +277,13 @@ function assembly_callback()
 		if [ "$type" = "rich" ]; then
 			CLI.status "publishing symbols: $img"
 
-			Assembly.run_tool "FunSDK-small" "$excat" $v_arg pub "$img"
+			Assembly.run_tool "FunSDK" "$excat" $v_arg pub "$img"
 			CLI.die_check $? "publish symbols"
 		fi
 		;;
 	*)
 		;;
 	esac
-}
-
-function init_assembly()
-{
-	local chip="$1"
-	local cb="$2"
-	local pd="share/funproj"
-	local target=
-	local variant=
-	local cflags=
-
-	# Parameter files have build stuff in them too, so ingest those parameters
-	# to set up the assembly. We need to know the variant in order to give the
-	# assembly the right target.
-	if [ -n "$O_TEST_PARAMETERS" ]; then
-		FunDotParams.init_with_file "$O_TEST_PARAMETERS"
-		variant=$(FunDotParams.get_value "BLD_TYPE")
-		if [ -n "$variant" ]; then
-			O_VARIANT="$variant"
-		fi
-
-		cflags=$(FunDotParams.get_value "FUNOS_MAKEFLAGS")
-	fi
-
-	target=$(derive_machine "$chip")
-	Assembly.init "$target" "$O_TAG_COLLECTION" "$pd" "$cb" "${O_PROJECTS[@]}"
-
-	if [ -n "$cflags" ]; then
-		# If the assembly isn't building FunOS, then this won't do anything.
-		Assembly.add_cflags "FunOS" "$cflags"
-	fi
 }
 
 # MARK: Actions
@@ -359,6 +356,27 @@ function __build()
 		g=$(realpath "$g")
 		Assembly.set_repository_clone "$p" "$g"
 	fi
+
+	# If a FunSDK base tag was specified, then use that value as the SDK_VERSION
+	# variable. Otherwise, we have to query the tag collection.
+	for (( i = 0; i < ${#O_PROJECTS[@]}; i += 2 )); do
+		local pi=${O_PROJECTS[$(( i + 0 ))]}
+		local vi=${O_PROJECTS[$(( i + 1 ))]}
+
+		if [ "$pi" = "FunSDK" ] && [ "$vi" != "collection" ]; then
+			v_sdk="$vi"
+			break
+		fi
+	done
+
+	# We should always have a FunSDK tag in the collection.
+	if [ -z "$v_sdk" ]; then
+		v_sdk=$(Assembly.lookup_tag "$p" "t")
+		CLI.die_ifz "$v_sdk" "no FunSDK in assembly"
+	fi
+
+	Assembly.set_variable "SDK_VERSION" "$v_sdk"
+	CLI.status "using sdk version: $v_sdk"
 
 	Assembly.assemble
 	CLI.die_check $? "DPU assembly failed"
@@ -576,7 +594,7 @@ function __main()
 			;;
 		-B | --build-cycle=*)
 			case "$arg" in
-			full|iterative|skip)
+			world|full|iterative|skip)
 				O_BUILD_CYCLE="$arg"
 				;;
 			*)

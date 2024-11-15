@@ -6,14 +6,14 @@
     "BuildCommands":
     {
         "Build": "git archive -o ./FunTest.%INSTANCE%.tar.gz --format tgz HEAD",
-        "Clean": "rm -f ./FunTest.%INSTANCE%.tar.gz"
+        "Clean": "rm -f ./build/%INSTANCE%/FunTest.src.tar.gz"
     },
     "BuildDirectory": ".",
     "TagPrefix": "bld_",
     "Images":
     {
         "default": "gzip",
-        "gzip": "FunTest.%INSTANCE%.tar.gz"
+        "gzip": "FunTest.src.tar.gz"
     },
     "MinimumBuildCycle": "Full"
 }
