@@ -19,6 +19,10 @@
 	username = SIGFUN
 	namespace = PR
 
+[fix "redo"]
+	namespace = REDO
+	generationSeparator = "#"
+
 [fix "bug"]
 	tracker = FunJira
 	urlFormat = http://jira.fungible.local/browse/%PREFIX%%NUMBER%
