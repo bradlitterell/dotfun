@@ -5,15 +5,15 @@
     "BuildTool": "git archive",
     "BuildCommands":
     {
-        "Build": "git archive -o ./FunTest.%INSTANCE%.tar.gz --format tgz HEAD",
-        "Clean": "rm -f ./build/%INSTANCE%/FunTest.src.tar.gz"
+        "Build": "git archive -o ./build/%INSTANCE%/FunTest.src.tgz --format tgz HEAD",
+        "Clean": "rm -f ./build/%INSTANCE%/FunTest.src.tgz"
     },
-    "BuildDirectory": ".",
+    "BuildDirectory": "build/%INSTANCE%",
     "TagPrefix": "bld_",
     "Images":
     {
         "default": "gzip",
-        "gzip": "FunTest.src.tar.gz"
+        "gzip": "FunTest.src.tgz"
     },
     "MinimumBuildCycle": "Full"
 }

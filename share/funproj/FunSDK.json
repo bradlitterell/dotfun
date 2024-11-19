@@ -6,8 +6,8 @@
     {
         "InstallSDK": "./scripts/bob --sdkup -v %SDK_VERSION% --preserve-mtime -C %CCHROOT%",
         "CleanSDK": "./scripts/bob --clean-sdk",
-        "Build": "git archive -o ./build/%INSTANCE%/FunSDK.src.tar.gz --format tgz HEAD",
-        "Clean": "rm -f ./build/%INSTANCE%/FunSDK.src.tar.gz"
+        "Build": "git archive -o ./build/%INSTANCE%/FunSDK.src.tgz --format tgz HEAD",
+        "Clean": "rm -f ./build/%INSTANCE%/FunSDK.src.tgz"
     },
     "BuildTool": "git archive",
     "BuildDirectory": "./build/%INSTANCE%",
@@ -20,6 +20,6 @@
     "Images":
     {
         "default": "gzip",
-        "gzip": "FunSDK.src.tar.gz"
+        "gzip": "FunSDK.src.tgz"
     }
 }
