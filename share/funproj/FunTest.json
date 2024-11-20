@@ -5,7 +5,7 @@
     "BuildTool": "git archive",
     "BuildCommands":
     {
-        "Build": "git archive -o ./build/%INSTANCE%/FunTest.src.tgz --format tgz HEAD",
+        "Build": "git archive -o ./build/%INSTANCE%/FunTest.src.tgz --format tgz --prefix FunTest/ HEAD",
         "Clean": "rm -f ./build/%INSTANCE%/FunTest.src.tgz"
     },
     "BuildDirectory": "build/%INSTANCE%",

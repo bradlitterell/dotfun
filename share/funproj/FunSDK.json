@@ -6,7 +6,7 @@
     {
         "InstallSDK": "./scripts/bob --sdkup -v %SDK_VERSION% --preserve-mtime -C %CCHROOT%",
         "CleanSDK": "./scripts/bob --clean-sdk",
-        "Build": "git archive -o ./build/%INSTANCE%/FunSDK.src.tgz --format tgz HEAD",
+        "Build": "git archive -o ./build/%INSTANCE%/FunSDK.src.tgz --format tgz --prefix FunSDK/ HEAD",
         "Clean": "rm -f ./build/%INSTANCE%/FunSDK.src.tgz"
     },
     "BuildTool": "git archive",

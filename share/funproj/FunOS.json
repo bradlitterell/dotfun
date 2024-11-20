@@ -20,6 +20,7 @@
         "default": "stripped",
         "rich": "funos-%TARGET%",
         "stripped": "funos-%TARGET%.stripped",
+        "elf": "funos-%TARGET%.stripped",
         "signed": "funos-%TARGET%.signed"
     },
     "Dependencies":

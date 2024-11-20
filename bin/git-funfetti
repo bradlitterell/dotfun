@@ -53,7 +53,7 @@ a test bundle
     fod            masters the test bundle and submits it to the Fun-on-Demand \
 service for testing -- this can only be used for the 'soc' PLATFORM
     run            masters the test bundle and runs it locally -- this can \
-only be used for the 'posix' and 'qemu' PLATFORMS
+only be used for the 'posix' and 'qemu' PLATFORMs
 
 The following firmwares are supported and may be given as arguments to the \
 f,firmware option:
