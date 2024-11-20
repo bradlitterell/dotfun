@@ -256,6 +256,10 @@ function assembly_callback()
 			local v_build=$(q2 cat "build_info.txt")
 			local v_asm=$(Assembly._lookup_tag_have_project "$p" "t")
 
+			if [ -z "$v_build" ]; then
+				v_build="<not set>"
+			fi
+
 			if [ "$v_build" != "$v_asm" ]; then
 				CLI.status "sdk mismatch; doing world build:" \
 						"built = $v_build, assembly base = $v_asm"
@@ -394,11 +398,13 @@ function __master()
 	local branch=
 	local which=
 
-	bug_id=$(Branch.guess_primary_problem)
-	CLI.die_ifz "$bug_id" "failed to guess branch problem"
-
 	branch=$(Git.get_current_branch)
 	CLI.die_ifz "$branch" "failed to get current branch"
+
+	bug_id=$(Branch.guess_primary_problem)
+	if [ -z "$bug_id" ]; then
+		bug_id="BRANCH-$branch"
+	fi
 
 	Fundle.init "$bug_id" "$branch" "$O_PRODUCT" "$chip" "$imgroot" "$email"
 	if [ -n "$O_TEST_PARAMETERS" ]; then
