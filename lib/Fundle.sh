@@ -436,6 +436,7 @@ function Fundle.run()
 	local image=
 	local argv=()
 	local boot_args=()
+	local wd="$(CLI.get_run_state_path)/run"
 
 	debug=$(grep -oE 'debug' <<< "$opts")
 	dpc=$(grep -oE 'dpc' <<< "$opts")
@@ -482,7 +483,9 @@ function Fundle.run()
 			argv+=("--dpc-server")
 		fi
 
+		CLI.pushdir "$wd"
 		CLI.command "${argv[@]}"
+		CLI.popdir
 		;;
 	qemu)
 		local delim="--"
@@ -511,7 +514,9 @@ function Fundle.run()
 			argv+=("$ba")
 		done
 
+		CLI.pushdir "$wd"
 		Assembly.run_tool "FunSDK" "${argv[@]}"
+		CLI.popdir
 		;;
 	*)
 		CLI.die "unsupported platform: $platform"

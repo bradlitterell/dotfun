@@ -130,6 +130,9 @@ BuildStyle corresponding to BUILD-STYLE. This option may be specified multiple \
 times to set a build style for each firmware. If multiple BUILD-STYLEs are \
 given for a single FIRMWARE, the one used is undefined
 
+M,makeflag=MAKEFLAG           Pass MAKEFLAG to the project build. This option \
+may be specified multiple times
+
 P,platform=PLATFORM           The platform to build for. If specified, this \
 overrides the platform present in the machine specification associated with \
 the PRODUCT
@@ -169,6 +172,7 @@ O_WORKING_REPOSITORY=
 O_TEST_PARAMETERS=
 O_BUILD_CYCLE=
 O_STYLES=()
+O_MAKEFLAGS=()
 O_PLATFORM=
 O_VARIANT=
 O_HOST=
@@ -328,6 +332,10 @@ function __build()
 	if [ -n "$cflags" ]; then
 		# If the assembly isn't building FunOS, then this won't do anything.
 		Assembly.add_cflags "FunOS" "$cflags"
+	fi
+
+	if [ ${#O_MAKEFLAGS[@]} -gt 0 ]; then
+		Assembly.add_cflags "$(Git.get_name)" "${O_MAKEFLAGS[@]}"
 	fi
 
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
@@ -624,6 +632,10 @@ function __main()
 			CLI.die_ifz "$fws" "invalid style specifier: $arg"
 
 			O_STYLES+=("$fw" "$fws")
+			shift
+			;;
+		-M | --makeflag=*)
+			O_MAKEFLAGS+=("$arg")
 			shift
 			;;
 		-P | --platform=*)
