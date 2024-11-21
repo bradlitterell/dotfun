@@ -31,8 +31,15 @@ O_ACTION=__dotfun
 # MARK: Command Implementation
 function __cmd()
 {
+	local gd="$HOME/.dotfun"
+	local wt="$dotfun"
+
+	if [ "$wt" != "$HOME" ]; then
+		gd="$dotfun/.git"
+	fi
+
 	CLI.pushdir "$dotfun"
-	Git.init_current
+	Git.init "$gd" "$wt" "default"
 
 	Git.run checkout drops
 	CLI.die_check $? "check out drops branch"
