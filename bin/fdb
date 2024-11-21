@@ -36,6 +36,8 @@ images are debugged with the gdb from the MIPS cross-compilation package
 s,server                          Trampoline to the Fungible debug server if \
 no IMAGE-OR-CORE is provided
 
+c,core                            Debug IMAGE-OR-CORE as a FunOS core dump
+
 k,sdk=SDK-DIRECTORY               Use the SDK in SDK-DIRECTORY. If not \
 specified, the SDKDIR environment variable is used
 
@@ -108,6 +110,15 @@ function __server()
 	CLI.command "$gdbserver" "$@"
 }
 
+function __debug_core()
+{
+	local gdb_mips="$1"
+	local gdbserver="$2"
+
+	shift 2
+	CLI.command "$gdbserver" "$@"
+}
+
 function __run()
 {
 	local gdb_mips="$1"
@@ -149,6 +160,10 @@ function __main()
 			;;
 		-s | --server)
 			O_ACTION=__server
+			shift
+			;;
+		-c | --core)
+			O_ACTION=__debug_core
 			shift
 			;;
 		-k | --sdk=*)
