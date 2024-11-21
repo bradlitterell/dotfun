@@ -1,0 +1,83 @@
+#!/bin/bash -O extglob
+
+# Executable preamble
+mydir="$(dirname $0)"
+pushd "$mydir/.." > /dev/null; dotfun="$(pwd)"; popd > /dev/null
+funlib="${dotfun}/lib"
+dotfiles="${dotfun}"
+[[ -d "$dotfun/../dotfiles" ]] && dotfiles="$dotfun/../dotfiles"
+libdir="${dotfiles}/lib"
+
+# Imports
+. "${libdir}/Lib.sh"
+. "${libdir}/Module.sh"
+. "${libdir}/CLI.sh"
+. "${libdir}/Git.sh"
+
+# Usage
+GIT_PARSEOPT_SPEC="\
+git-dropfun
+
+Rebases the 'drops' branch of the dotfun project on top of the 'main' branch \
+and preserves the commit to remove Damien-specific stuff on that branch as the \
+top of tree.
+
+$(CLI.get_stuckopt_blurb)
+--
+$(CLI.get_global_blurb)
+"
+O_ACTION=__dotfun
+
+# MARK: Command Implementation
+function __cmd()
+{
+	CLI.pushdir "$dotfun"
+	Git.init_current
+
+	Git.run checkout drops
+	CLI.die_check $? "check out drops branch"
+
+	GIT_SEQUENCE_EDITOR=: Git.run rebase -i main
+	CLI.die_check $? "rebase drops branch on top of main"
+
+	Git.run push -f
+	CLI.die_check $? "publish commits to remote"
+
+	Git.run checkout main
+	CLI.die_check $? "check out main branch"
+
+	CLI.popdir
+}
+
+function __main()
+{
+	local me="$(basename ${BASH_SOURCE[0]})"
+
+	CLI.init "$me" "$GIT_PARSEOPT_SPEC" "$@"
+	eval "$(echo "$GIT_PARSEOPT_SPEC" |
+		git rev-parse --parseopt --keep-dashdash --stuck-long -- "$@" \
+				|| echo exit $?
+	)"
+
+	while [ $# -ne 0 ]; do
+		local arg=""
+		local arg_opt=()
+
+		case "$1" in
+		--)
+			shift
+			break
+			;;
+		-*)
+			break
+			;;
+		*)
+			break
+			;;
+		esac
+	done
+
+	__cmd "$@"
+}
+
+__main "$@"

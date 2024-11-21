@@ -22,6 +22,8 @@ G_HOMEBREW_PACKAGES=(
 	"pkg-config"
 	"glib"
 	"pixman"
+	# Required for authenticating to ADO.
+	"git-credential-manager"
 )
 
 G_PIP_PACKAGES=(

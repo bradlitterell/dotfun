@@ -29,3 +29,13 @@
 	username = dsorresso
 	regex = [A-Z]+\\-[0-9]{4,}
 	trailer = Bug-Id
+
+# Credential helper for ADO. This requires the 'git-credential-manager' cask
+# from Homebrew.
+#
+# https://formulae.brew.sh/cask/git-credential-manager
+[credential]
+	helper =
+	helper = /usr/local/share/gcm-core/git-credential-manager
+[credential "https://dev.azure.com"]
+	useHttpPath = true
