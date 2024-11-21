@@ -4,13 +4,26 @@
     "BuildTool": "build_qemu.sh",
     "BuildCommands":
     {
-        "Build": "MAKE_PARALL=%NCPU% %SDKDIR%/scripts/build_qemu.sh",
+        "Build": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh",
         "Clean": "make clean"
     },
     "BuildDirectory": "./build",
     "TagPrefix": "bld_",
     "Images":
-    {},
+    {
+        "default": "mips64",
+        "system": "qemu-system-mips64",
+        "mips64": "qemu-system-mips64-%CHIP:LOWER%-unsigned",
+        "mipsel": "qemu-system-mipsel-%CHIP:LOWER%-unsigned",
+        "aarch": "qemu-system-aarch64",
+        "aarch-unsigned": "qemu-system-aarch64-unsigned",
+        "x86": "qemu-system-x86_64",
+        "x86-unsigned": "qemu-system-x86_64-unsigned"
+    },
+    "Imports":
+    [
+        "WORKSPACE"
+    ],
     "Dependencies":
     [
         "FunSDK"

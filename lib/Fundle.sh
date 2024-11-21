@@ -444,6 +444,10 @@ function Fundle.run()
 	image=$(Assembly.get_image "FunOS" "rich")
 	CLI.die_ifz "$image" "no symbol-rich FunOS image to run"
 
+	# For running content locally, we keep the working directory outside the
+	# fundle directory since it's not a static artifact set.
+	CLI.command mkdir -p "$wd"
+
 	# Boot args are delimited by spaces, so we can safely capture this in an
 	# array.
 	boot_args=($(FunDotParams.get_value "BOOTARGS"))
@@ -492,6 +496,12 @@ function Fundle.run()
 
 		argv+=("scripts/qemu-dpu")
 		argv+=("--machine" "$(tolower $F_FUNDLE_CHIP)")
+
+		# If we built FunQemu, point the trampoline script at those binaries.
+		if [ -d "$F_FUNDLE_IMGDIR/FunQemu" ]; then
+			argv+=("-D")
+			argv+=("$F_FUNDLE_IMGDIR/FunQemu")
+		fi
 
 		# If we are running through Qemu, we have to set up the DPC uart in
 		# Qemu with the -U option.

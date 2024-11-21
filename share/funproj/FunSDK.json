@@ -15,7 +15,7 @@
     "Exports":
     {
         "SDKDIR": "%WORKSPACE%/FunSDK",
-        "SDK_INSTALL_DIR": "%WORKSPACE%/FunSDK"
+        "SDK_INSTALL_DIR": "%WORKSPACE%/FunSDK/FunSDK"
     },
     "Images":
     {
