@@ -1,13 +1,15 @@
 {
     "Name": "FunQemu",
     "URL": "fungible://FunQemu",
-    "BuildTool": "build_qemu.sh",
-    "BuildCommands":
-    {
-        "Build": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh",
-        "Clean": "make clean"
+    "Build": {
+        "Tool": "build_qemu.sh",
+        "Directory": "./build",
+        "Commands":
+        {
+            "Execute": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh",
+            "Clean": "make clean"
+        }
     },
-    "BuildDirectory": "./build",
     "TagPrefix": "bld_",
     "Images":
     {
@@ -22,10 +24,12 @@
     },
     "Imports":
     [
+        "SDKDIR",
         "WORKSPACE"
     ],
     "Dependencies":
     [
-        "FunSDK"
+        "FunSDK",
+        "FunOS_qemu"
     ]
 }

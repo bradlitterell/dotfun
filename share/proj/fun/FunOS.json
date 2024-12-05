@@ -1,0 +1,49 @@
+{
+    "Name": "FunOS",
+    "URL": "fungible://FunOS",
+    "Build":
+    {
+        "Tool": "make",
+        "VerbosityFormat": "2Vl=1",
+        "QuietFormat": "1dq",
+        "Directory": "./build",
+        "Commands":
+        {
+            "Execute": "make -j%NCPU% MACHINE=%TARGET% SIGN=1",
+            "Clean": "make clean"
+        },
+        "Styles":
+        {
+            "issu": "ISSU_XDATA=1"
+        }
+    },
+    "Install":
+    {
+        "Tool": "make",
+        "VerbosityFormat": "2Vl=1",
+        "QuietFormat": "1dq",
+        "Directory": "%SDK_INSTALL_DIR%/FunSDK",
+        "Commands":
+        {
+            "Execute": "make -j%NCPU% install-headers",
+            "Clean": "make clean"
+        }
+    },
+    "Imports":
+    [
+        "SDK_INSTALL_DIR"
+    ],
+    "TagPrefix": "bld_",
+    "Images":
+    {
+        "default": "stripped",
+        "rich": "funos-%TARGET%",
+        "stripped": "funos-%TARGET%.stripped",
+        "elf": "funos-%TARGET%.stripped",
+        "signed": "funos-%TARGET%.signed"
+    },
+    "Dependencies":
+    [
+        "FunSDK"
+    ]
+}

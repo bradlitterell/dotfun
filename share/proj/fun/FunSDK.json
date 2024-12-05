@@ -1,0 +1,40 @@
+{
+    "Name": "FunSDK",
+    "URL": "fungible://FunSDK-small",
+    "Build":
+    {
+        "Tool": "git archive",
+        "VerbosityFormat": "dv",
+        "Directory": "./build/%INSTANCE%",
+        "Commands":
+        {
+            "Execute": "git archive -o ./build/%INSTANCE%/FunSDK.src.tgz --format tgz --prefix FunSDK/ HEAD",
+            "Clean": "rm -f ./build/%INSTANCE%/FunSDK.src.tgz"
+        }
+    },
+    "Install":
+    {
+        "Tool": "./scripts/bob",
+        "VerbosityFormat": "dV",
+        "Directory": "%WORKSPACE%/FunSDK/FunSDK",
+        "Commands":
+        {
+            "Execute": "./scripts/bob --sdkup -v %SDK_VERSION% --preserve-mtime -C %CCHROOT%",
+            "Clean": "./scripts/bob --clean-sdk"
+        }
+    },
+    "TagPrefix": "bld_",
+    "Exports":
+    {
+        "SDKDIR": "%WORKSPACE%/FunSDK",
+        "SDK_INSTALL_DIR": "%WORKSPACE%/FunSDK"
+    },
+    "Images":
+    {
+        "default": "gzip",
+        "gzip": "FunSDK.src.tgz"
+    },
+    "Properties": {
+        "Bootstrap": true
+    }
+}

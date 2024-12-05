@@ -100,10 +100,6 @@ dependencies for a firmware are discovered, the tags from this collection are \
 used. If not provided, the base tag of the working git repository is assumed \
 to be a valid tag for each project in the assembly and used as the base
 
-w,working-repository         Perform the build of the working repository \
-firmware directly from the working repository, rather than checking out the \
-base tag and merging it in a separate repository clone
-
 T,test-parameters=DOT-PARAMS-FILE \
                              Perform the build and test according to the \
 parameters in DOT-PARAMS-FILE. If email addresses and boot-args are specified \
@@ -111,6 +107,18 @@ at the command line, they will be appended to the values from DOT-PARAMS-FILE. \
 Other command line-supplied values will override those of the DOT-PARAMS-FILE. \
 If DOT-PARAMS-FILE begins with the '@' character, the argument is the name of \
 a test in the workspace's FunDevelopment repository
+
+w,workspace=WORKSPACE \
+Use WORKSPACE as the workspace directory for all operations, including cloning \
+repositories, building images, etc. If not specified, a temporary directory \
+associated with the current boot session is used
+
+W,working-workspace          Assume that the workspace is already in the exact \
+state required to perform build operations. This will skip any git operations \
+on the repositories in the workspace, and all base refs (specified via \
+p,project) and branch merges (specified by b,merge-branch) will be ignored. \
+The workspace is expected to be populated with all required projects. This \
+option causes the default build cycle to be changed from 'full' to 'iterative'
 
 B,build-cycle=skip|iterative|full|world \
                              The type of build cycle to execute. A 'skip' \
@@ -132,6 +140,9 @@ given for a single FIRMWARE, the one used is undefined
 
 M,makeflag=MAKEFLAG           Pass MAKEFLAG to the project build. This option \
 may be specified multiple times
+
+j,job-multiplier=MULTIPLIER   Multiply NCPU by MULTIPLIER when determining the \
+desired parallelism for build. If unspecified, the default is 2
 
 P,platform=PLATFORM           The platform to build for. If specified, this \
 overrides the platform present in the machine specification associated with \
@@ -168,11 +179,13 @@ $(CLI.get_global_blurb)
 O_PROJECTS=()
 O_BRANCHES=()
 O_TAG_COLLECTION=
-O_WORKING_REPOSITORY=
 O_TEST_PARAMETERS=
+O_WORKSPACE=
+O_WORKING_WORKSPACE=
 O_BUILD_CYCLE=
 O_STYLES=()
 O_MAKEFLAGS=()
+O_JOB_MULTIPLIER=2
 O_PLATFORM=
 O_VARIANT=
 O_HOST=
@@ -220,7 +233,7 @@ function synthesize_tag_collection()
 	t=$(Git.get_base_tag)
 	CLI.die_ifz "$t" "cannot determine base tag from repo"
 
-	pd=$(Module.find_resource "share/funproj")
+	pd=$(Module.find_resource "share/proj/fun")
 	CLI.die_ifz "$pd" "no fungible project specifications found"
 
 	Plist.init_with_raw "json" '{}'
@@ -302,6 +315,8 @@ function __build()
 	local chip="$1"
 	local opts="$2"
 	local target=
+	local tags="$O_TAG_COLLECTION"
+	local ws="$O_WORKSPACE"
 	local variant=
 	local cflags=
 	local pvmap=(
@@ -323,11 +338,19 @@ function __build()
 	fi
 
 	target=$(derive_machine "$chip")
-	Assembly.init "$target" \
-			"$O_TAG_COLLECTION" \
-			"share/funproj" \
-			"assembly_callback" \
-			"${O_PROJECTS[@]}"
+	Assembly.init "$target" "$tags" "$ws" "fun" "${O_PROJECTS[@]}"
+	Assembly.set_callback "assembly_callback"
+	Assembly.set_parallel_factor "$O_JOB_MULTIPLIER"
+
+	if [ -n "$O_WORKING_WORKSPACE" ]; then
+		Assembly.set_working_workspace
+	fi
+
+	# Do this after we've made the assembly use a working workspace to ensure
+	# that the user's specified build cycle is respected.
+	if [ -n "$O_BUILD_CYCLE" ]; then
+		Assembly.set_build_cycle "$O_BUILD_CYCLE"
+	fi
 
 	if [ -n "$cflags" ]; then
 		# If the assembly isn't building FunOS, then this won't do anything.
@@ -358,18 +381,6 @@ function __build()
 
 		Assembly.set_build_style "$fw" "$s"
 	done
-
-	if [ -n "$O_BUILD_CYCLE" ]; then
-		Assembly.set_build_cycle "$O_BUILD_CYCLE"
-	fi
-
-	if [ -n "$O_WORKING_REPOSITORY" ]; then
-		local p="$(Git.get_name)"
-		local g="$(Git.get_worktree)"
-
-		g=$(realpath "$g")
-		Assembly.set_repository_clone "$p" "$g"
-	fi
 
 	# If a FunSDK base tag was specified, then use that value as the SDK_VERSION
 	# variable. Otherwise, we have to query the tag collection.
@@ -601,16 +612,20 @@ function __main()
 			O_TAG_COLLECTION="$arg"
 			shift
 			;;
-		-w | --working-repository)
-			O_WORKING_REPOSITORY=t
-			shift
-			;;
 		-T | --test-parameters=*)
 			if [[ "$arg" =~ ^@ ]]; then
 				fundev_test=t
 			fi
 
 			O_TEST_PARAMETERS="${arg#@*}"
+			shift
+			;;
+		-w | --workspace=*)
+			O_WORKSPACE="$(realpath "$arg")"
+			shift
+			;;
+		-W | --working-workspace)
+			O_WORKING_WORKSPACE=t
 			shift
 			;;
 		-B | --build-cycle=*)
@@ -636,6 +651,10 @@ function __main()
 			;;
 		-M | --makeflag=*)
 			O_MAKEFLAGS+=("$arg")
+			shift
+			;;
+		-j | --job-multiplier=*)
+			O_JOB_MULTIPLIER="$arg"
 			shift
 			;;
 		-P | --platform=*)
@@ -702,6 +721,10 @@ function __main()
 
 	O_PROJECTS+=("$p" "collection")
 	O_BRANCHES+=("$p" "$branch")
+
+	if [ -z "$O_WORKSPACE" ]; then
+		O_WORKSPACE=$(CLI.get_boot_state_path "ws")
+	fi
 
 	if [ -z "$O_HOST" ]; then
 		local x=

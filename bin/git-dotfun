@@ -14,10 +14,11 @@ libdir="${dotfiles}/lib"
 
 # Usage
 GIT_PARSEOPT_SPEC="\
-git [dotfun GIT-COMMAND|funrun COMMAND] [ARGUMENT ARGUMENT ...]
+git dotfun GIT-SUBCOMMAND
+git funrun GIT-SUBCOMMAND [ARGUMENT ARGUMENT ...]
 
 Runs a git command on the dotfun repository. When invoked as git-funrun,
-COMMAND will be run from the in-development repository.
+GIT-SUBCOMMAND will be run from the in-development repository.
 --
 "
 O_ACTION=__dotfun

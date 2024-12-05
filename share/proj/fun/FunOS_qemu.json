@@ -1,0 +1,26 @@
+{
+    "Name": "FunOS_qemu",
+    "Parent": "FunOS",
+    "URL": "fungible://FunOS",
+    "Install":
+    {
+        "Tool": "make",
+        "VerbosityFormat": "2Vl=1",
+        "QuietFormat": "1dq",
+        "Directory": "%SDK_INSTALL_DIR%/FunSDK",
+        "Commands":
+        {
+            "Execute": "make -j%NCPU% MACHINE=%CHIP%-posix-noasan install",
+            "Clean": "make clean"
+        }
+    },
+    "Imports":
+    [
+        "SDK_INSTALL_DIR"
+    ],
+    "TagPrefix": "bld_",
+    "Dependencies":
+    [
+        "FunOS"
+    ]
+}
