@@ -108,10 +108,11 @@ Other command line-supplied values will override those of the DOT-PARAMS-FILE. \
 If DOT-PARAMS-FILE begins with the '@' character, the argument is the name of \
 a test in the workspace's FunDevelopment repository
 
-w,workspace=WORKSPACE \
+w,workspace?=WORKSPACE \
 Use WORKSPACE as the workspace directory for all operations, including cloning \
-repositories, building images, etc. If not specified, a temporary directory \
-associated with the current boot session is used
+repositories, building images, etc. If WORKSPACE is not given, then the parent \
+directory of the working directory is used. If this option is not specified, a \
+temporary directory associated with the current boot session is used
 
 W,live-workspace          Assume that the workspace is being actively used \
 outside of the git-funfetti build flow and that it is already in the exact \
@@ -624,8 +625,13 @@ function __main()
 			O_TEST_PARAMETERS="${arg#@*}"
 			shift
 			;;
-		-w | --workspace=*)
-			O_WORKSPACE="$(realpath "$arg")"
+		-w | --workspace*)
+			O_WORKSPACE=$(CLI.get_option_argument "$1")
+			if [ -z "$O_WORKSPACE" ]; then
+				O_WORKSPACE=..
+			fi
+
+			O_WORKSPACE="$(realpath "$O_WORKSPACE")"
 			shift
 			;;
 		-W | --live-workspace)
