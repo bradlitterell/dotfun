@@ -113,7 +113,8 @@ Use WORKSPACE as the workspace directory for all operations, including cloning \
 repositories, building images, etc. If not specified, a temporary directory \
 associated with the current boot session is used
 
-W,working-workspace          Assume that the workspace is already in the exact \
+W,live-workspace          Assume that the workspace is being actively used \
+outside of the git-funfetti build flow and that it is already in the exact \
 state required to perform build operations. This will skip any git operations \
 on the repositories in the workspace, and all base refs (specified via \
 p,project) and branch merges (specified by b,merge-branch) will be ignored. \
@@ -181,7 +182,7 @@ O_BRANCHES=()
 O_TAG_COLLECTION=
 O_TEST_PARAMETERS=
 O_WORKSPACE=
-O_WORKING_WORKSPACE=
+O_LIVE_WORKSPACE=
 O_BUILD_CYCLE=
 O_STYLES=()
 O_MAKEFLAGS=()
@@ -273,17 +274,20 @@ function assembly_callback()
 			local v_build=$(q2 cat "build_info.txt")
 			local v_asm=$(Assembly._lookup_tag_have_project "$p" "t")
 
-			if [ -z "$v_build" ]; then
-				v_build="<not set>"
+			# If we're using a live workspace, then we don't touch the SDK and
+			# assume that the caller has done everything required.
+			if [ -n "$O_LIVE_WORKSPACE" ]; then
+				v_build="$v_asm"
+			elif [ -z "$v_build" ]; then
+				v_build="<unset>"
 			fi
 
 			if [ "$v_build" != "$v_asm" ]; then
-				CLI.status "sdk mismatch; doing world build:" \
-						"built = $v_build, assembly base = $v_asm"
+				CLI.status "sdk out of date; doing world build:" \
+						"actual = $v_build, expected = $v_asm"
 				Assembly.set_build_cycle "world"
 			else
-				CLI.status "sdk does not need rebuilding:" \
-						"built = $v_build, assembly base = $v_asm"
+				CLI.status "sdk does not need re-installing: $v_build"
 			fi
 		fi
 		;;
@@ -342,8 +346,8 @@ function __build()
 	Assembly.set_callback "assembly_callback"
 	Assembly.set_parallel_factor "$O_JOB_MULTIPLIER"
 
-	if [ -n "$O_WORKING_WORKSPACE" ]; then
-		Assembly.set_working_workspace
+	if [ -n "$O_LIVE_WORKSPACE" ]; then
+		Assembly.set_live_workspace
 	fi
 
 	# Do this after we've made the assembly use a working workspace to ensure
@@ -624,8 +628,8 @@ function __main()
 			O_WORKSPACE="$(realpath "$arg")"
 			shift
 			;;
-		-W | --working-workspace)
-			O_WORKING_WORKSPACE=t
+		-W | --live-workspace)
+			O_LIVE_WORKSPACE=t
 			shift
 			;;
 		-B | --build-cycle=*)
