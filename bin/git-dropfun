@@ -41,6 +41,9 @@ function __cmd()
 	CLI.pushdir "$dotfun"
 	Git.init "$gd" "$wt" "default"
 
+	Git.run fetch origin drops:drops
+	CLI.die_check $? "fetch drops branch"
+
 	Git.run checkout drops
 	CLI.die_check $? "check out drops branch"
 
