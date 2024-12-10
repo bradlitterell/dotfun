@@ -6,7 +6,7 @@
         "Directory": "./build",
         "Commands":
         {
-            "Execute": "MAKE_PARALL=-j%NCPU% QEMU_ITERATIVE=1 %SDKDIR%/scripts/build_qemu.sh",
+            "Execute": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh --configure",
         }
     },
     "Build": {
@@ -14,8 +14,8 @@
         "Directory": "./build",
         "Commands":
         {
-            "Execute": "MAKE_PARALL=-j%NCPU% QEMU_ITERATIVE=0 %SDKDIR%/scripts/build_qemu.sh",
-            "Clean": "rm -rf build; make clean"
+            "Execute": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh --build --install",
+            "Clean": "MAKE_PARALL=-j%NCPU% %SDKDIR%/scripts/build_qemu.sh --clean"
         }
     },
     "TagPrefix": "bld_",
