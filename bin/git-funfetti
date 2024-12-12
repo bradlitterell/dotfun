@@ -250,7 +250,7 @@ function synthesize_tag_collection()
 		Plist.set_value "$pn" "string" "$t"
 	done
 
-	CLI.status "writing synthesized tag collection to: $f"
+	CLI.debug "writing synthesized tag collection to: $f"
 	Plist.write "$f"
 	echo "$f"
 }
@@ -260,7 +260,7 @@ function assembly_callback()
 	local type="$1"
 	local p="$2"
 
-	CLI.status "got assembly callback: type = $type, project = $p"
+	CLI.debug "got assembly callback: type = $type, project = $p"
 
 	case "$type" in
 	stage)
@@ -300,7 +300,7 @@ function assembly_callback()
 		local v_arg=$(CLI.get_verbosity_opt "dv")
 		local excat="bin/scripts/excat.py"
 
-		CLI.status "image callback: type = $type, img = $img"
+		CLI.debug "image callback: type = $type, img = $img"
 
 		if [ "$type" = "rich" ]; then
 			CLI.status "publishing symbols: $img"
@@ -784,7 +784,7 @@ function __main()
 	# we'll look in the test actions list, since test actions are all mutually
 	# exclusive.
 	for a in ${G_GENERIC_ACTIONS[@]}; do
-		CLI.status "will perform action: $a"
+		CLI.debug "will perform action: $a"
 		O_ACTIONS+=("$a")
 
 		if [ "$a" = "__$O_ACTION" ]; then
@@ -796,7 +796,7 @@ function __main()
 	if [ -z "$action_found" ]; then
 		for a in ${G_TEST_ACTIONS[@]}; do
 			if [ "$a" = "__$O_ACTION" ]; then
-				CLI.status "will perform action: $a"
+				CLI.debug "will perform action: $a"
 				
 				O_ACTIONS+=("$a")
 				action_found="$a"

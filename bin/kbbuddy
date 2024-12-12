@@ -70,7 +70,7 @@ function query_key_modulus()
 
 	mod=$(CLI.command xxd -g0 -p "$kf" | tr -d $'\n')
 
-	CLI.status "$k = $mod"
+	CLI.debug "$k = $mod"
 	echo "$mod"
 }
 
@@ -124,7 +124,7 @@ function parse_keybag()
 		# goal, a better way would've been to chop down the maximum number of
 		# keys that could be in the keybag. Today there are only four.
 		off=$(( off * 4 ))
-		CLI.status "key entry at offset: bytes = $off, offset = $(( off / 4 ))"
+		CLI.debug "key entry at offset: bytes = $off, offset = $(( off / 4 ))"
 		CLI.debug "read offset: i = $i, off = $off bytes"
 
 		# Each key entry is prefixed with a 4-byte integer which indicates the
