@@ -797,7 +797,7 @@ function __main()
 		for a in ${G_TEST_ACTIONS[@]}; do
 			if [ "$a" = "__$O_ACTION" ]; then
 				CLI.debug "will perform action: $a"
-				
+
 				O_ACTIONS+=("$a")
 				action_found="$a"
 				break
