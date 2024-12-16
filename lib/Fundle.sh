@@ -56,7 +56,6 @@ F_FUNDLE_BOOT_ARGS=()
 F_FUNDLE_EMAIL=
 F_FUNDLE_EXTRA_EMAILS=()
 F_FUNDLE_DURATION=
-F_FUNDLE_AR=
 
 # MARK: Internal
 function Fundle._scriptify()
@@ -364,7 +363,6 @@ function Fundle.package()
 	local qemume="$F_FUNDLE_PATH/qemume.sh"
 	local cl_argv=
 	local script=
-	local ar="$(CLI.get_run_state_path "${F_FUNDLE_NAME}.tar.gz")"
 	local v_arg=$(CLI.get_verbosity_opt "v")
 
 	if [ -n "$F_FUNDLE_PARAMS" ]; then
@@ -421,9 +419,6 @@ function Fundle.package()
 	esac
 
 	FunDotParams.write "$params"
-
-	CLI.command tar -cz${v_arg}f "$ar" -C "$F_FUNDLE_PATH" .
-	F_FUNDLE_AR="$ar"
 }
 
 function Fundle.run()
@@ -537,12 +532,18 @@ function Fundle.run()
 function Fundle.submit()
 {
 	local host="$1"
+	local ar="$(CLI.get_run_state_path "${F_FUNDLE_NAME}.tar.gz")"
 	local fodit="$F_FUNDLE_PATH/fodit.sh"
 	local v_arg=$(CLI.get_verbosity_opt "dv")
 	local out=
 	local job=
 
-	CLI.command scp $v_arg "$F_FUNDLE_AR" "$host":~/
+	if [ ! -f "$ar" ]; then
+		CLI.command tar -cz${v_arg}f "$ar" -C "$F_FUNDLE_PATH" .
+		CLI.die_check $? "failed to create archive for submission"
+	fi
+
+	CLI.command scp $v_arg "$ar" "$host":~/
 	out=$(CLI.command ssh $v_arg "$host" /bin/bash < "$fodit")
 	job=$(grep 'Enqueued as job ' <<< "$out")
 	job=$(strip_prefix "$job" 'Enqueued as job ')
