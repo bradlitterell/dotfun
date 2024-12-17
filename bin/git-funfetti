@@ -23,7 +23,6 @@ G_GENERIC_ACTIONS=(
 	"__build"
 	"__master"
 )
-
 G_TEST_ACTIONS=(
 	"__fod"
 	"__run"
@@ -38,6 +37,8 @@ G_USEABLE_INSTANCES=(
 	4
 	5
 )
+
+G_PROJECT=
 
 # Parsed options
 GIT_PARSEOPT_SPEC="\
@@ -302,7 +303,7 @@ function assembly_callback()
 
 		CLI.debug "image callback: type = $type, img = $img"
 
-		if [ "$type" = "rich" ]; then
+		if [ "$O_PLATFORM" != "posix" ] && [ "$type" = "rich" ]; then
 			CLI.status "publishing symbols: $img"
 
 			Assembly.run_tool "FunSDK" "$excat" $v_arg pub "$img"
@@ -359,11 +360,13 @@ function __build()
 
 	if [ -n "$cflags" ]; then
 		# If the assembly isn't building FunOS, then this won't do anything.
+		CLI.status "adding FunOS flags: ${O_MAKEFLAGS[@]}"
 		Assembly.add_cflags "FunOS" "$cflags"
 	fi
 
 	if [ ${#O_MAKEFLAGS[@]} -gt 0 ]; then
-		Assembly.add_cflags "$(Git.get_name)" "${O_MAKEFLAGS[@]}"
+		CLI.status "adding make flags: ${O_MAKEFLAGS[@]}"
+		Assembly.add_cflags "$G_PROJECT" "${O_MAKEFLAGS[@]}"
 	fi
 
 	for (( i = 0; i < ${#pvmap[@]}; i += 2 )); do
@@ -377,6 +380,7 @@ function __build()
 		local fw=${O_BRANCHES[$(( i + 0 ))]}
 		local b=${O_BRANCHES[$(( i + 1 ))]}
 
+		CLI.status "will merge branch: $fw <= $b"
 		Assembly.merge_branch "$fw" "$b"
 	done
 
@@ -384,6 +388,7 @@ function __build()
 		local fw=${O_STYLES[$(( i + 0 ))]}
 		local s=${O_STYLES[$(( i + 1 ))]}
 
+		CLI.status "setting build style: $fw: $b"
 		Assembly.set_build_style "$fw" "$s"
 	done
 
@@ -728,6 +733,7 @@ function __main()
 	# to do anything special to catch that case.
 	p=$(Git.get_name)
 	branch=$(Git.get_current_branch)
+	G_PROJECT="$p"
 
 	O_PROJECTS+=("$p" "collection")
 	O_BRANCHES+=("$p" "$branch")
