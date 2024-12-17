@@ -254,7 +254,7 @@ function __cmd()
 	done < "$O_INPUT"
 
 	if [ -n "$O_OUTPUT" ]; then
-		CLI.command mv "$f" "$O_OUTPUT"
+		CLI.run d mv "$f" "$O_OUTPUT"
 	else
 		cat "$f"
 	fi

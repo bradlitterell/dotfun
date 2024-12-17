@@ -458,8 +458,8 @@ function __master()
 	if [ -n "$O_OUTPUT_BUNDLE" ]; then
 		local root=$(Fundle.get_root)
 
-		CLI.command_noerr mkdir -p "$O_OUTPUT_BUNDLE"
-		CLI.command_noerr rm -rf "$O_OUTPUT_BUNDLE"
+		CLI.run_noerr mkdir -p "$O_OUTPUT_BUNDLE"
+		CLI.run_noerr rm -rf "$O_OUTPUT_BUNDLE"
 
 		cp_clone -R "$root" "$O_OUTPUT_BUNDLE"
 	fi
@@ -473,14 +473,14 @@ function __fod()
 
 	# Check to see if we're set up for ssh keys on the host. Note that the
 	# configuration file sets the username to use for the fun-on-demand cluster.
-	CLI.command ssh -vn \
+	CLI.run v ssh -vn \
 			-o 'PasswordAuthentication no' \
 			-o 'BatchMode yes' \
 			"$O_HOST" 2>&1 | grep -qE '^Authenticated to'
 	if [ $? -ne 0 ]; then
 		CLI.warn "bootstrapping authentication to $O_HOST..."
 
-		CLI.command sshauth $v_arg -k "$HOME/.ssh/id_rsa4k.pub" "$O_HOST"
+		CLI.run v sshauth $v_arg -k "$HOME/.ssh/id_rsa4k.pub" "$O_HOST"
 		CLI.die_check $? "authentication failed: $O_HOST"
 	fi
 

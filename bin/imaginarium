@@ -411,7 +411,7 @@ function __verify_signature()
 		tail_count=$(( img_len - G_BUFFER_LEN ))
 		tail -c "$tail_count" "$O_IMAGE" > "$img"
 
-		CLI.command openssl dgst -sha512 \
+		CLI.run v openssl dgst -sha512 \
 				-verify "$O_VERIFY_SIGNATURE" \
 				-signature "$sig" \
 				"$img"

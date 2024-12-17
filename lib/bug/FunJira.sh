@@ -79,7 +79,7 @@ function FunJira._api()
 	auth="${F_FUNJIRA_USERNAME}:$pw"
 	if [ -n "$data" ]; then
 		CLI.debug "sending request: $which: $url: $data"
-		r=$(CLI.command curl -s -X "$which" \
+		r=$(CLI.run v curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
 				-m "$F_FUNJIRA_TIMEOUT" \
@@ -88,7 +88,7 @@ function FunJira._api()
 				"$url" <<< "--user $auth")
 	else
 		CLI.debug "sending request: $which: $url"
-		r=$(CLI.command curl -s -X "$which" \
+		r=$(CLI.run v curl -s -X "$which" \
 				-H 'Accept: application/json' \
 				-H "Content-Type: application/json" \
 				-m "$F_FUNJIRA_TIMEOUT" \
@@ -411,11 +411,11 @@ function FunJira.init()
 	F_FUNJIRA_USERNAME="$username"
 	F_FUNJIRA_SECRETS="$secrets"
 
-	Module.config 0 "fungible jira"
-	Module.config 1 "api" "$G_FUNJIRA_API"
-	Module.config 1 "project" "$F_FUNJIRA_PROJECT"
-	Module.config 1 "username" "$F_FUNJIRA_USERNAME"
-	Module.config 1 "secrets store" "$F_FUNJIRA_SECRETS"
+	CLI.print_field 0 "fungible jira"
+	CLI.print_field 1 "api" "$G_FUNJIRA_API"
+	CLI.print_field 1 "project" "$F_FUNJIRA_PROJECT"
+	CLI.print_field 1 "username" "$F_FUNJIRA_USERNAME"
+	CLI.print_field 1 "secrets store" "$F_FUNJIRA_SECRETS"
 }
 
 function FunJira.init_problem()
@@ -423,8 +423,8 @@ function FunJira.init_problem()
 	local n="$1"
 
 	F_FUNJIRA_ISSUE="$n"
-	Module.config 0 "fungible jira issue"
-	Module.config 1 "identifier" "$F_FUNJIRA_ISSUE"
+	CLI.print_field 0 "fungible jira issue"
+	CLI.print_field 1 "identifier" "$F_FUNJIRA_ISSUE"
 }
 
 function FunJira.set_request_timeout()

@@ -89,7 +89,7 @@ function __cmd()
 		;;
 	esac
 
-	candidates=($(CLI.command find "$O_SEARCH_ROOT" -name "$pred"))
+	candidates=($(CLI.run v2 find "$O_SEARCH_ROOT" -name "$pred"))
 	if [ ${#candidates[@]} -eq 0 ]; then
 		CLI.die "no candidates found for command: $O_COMMAND"
 	fi
@@ -152,7 +152,7 @@ function __cmd()
 			CLI.debug "changing working directory to: $O_WORKING_DIRECTORY"
 			cd "$O_WORKING_DIRECTORY"
 		fi
-		PYTHONWARNINGS=ignore CLI.command ${cmd_tramp} "${cmd}" "$@"
+		PYTHONWARNINGS=ignore CLI.run v ${cmd_tramp} "${cmd}" "$@"
 	fi
 }
 

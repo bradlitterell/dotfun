@@ -66,7 +66,7 @@ function __qemu_attach()
 	gdb_argv+=("$O_IMAGE_OR_CORE")
 
 	shift 2
-	CLI.command "${gdb_argv[@]}" "$@"
+	CLI.run v "${gdb_argv[@]}" "$@"
 }
 
 function __posix_attach()
@@ -91,7 +91,7 @@ function __posix_attach()
 	done
 
 	shift 2
-	CLI.command "${lldb_argv[@]}" "$@"
+	CLI.run v "${lldb_argv[@]}" "$@"
 }
 
 function __server()
@@ -101,13 +101,13 @@ function __server()
 	local varg=$(CLI.get_verbosity_opt "dv")
 	local qarg=$(CLI.get_verbosity_opt "dq")
 
-	CLI.command pip show $varg $qarg python-idzip
+	CLI.run d pip show $varg $qarg python-idzip
 	if [ $? -ne 0 ]; then
-		CLI.command pip install $varg $qarg python-idzip
+		CLI.run v pip install $varg $qarg python-idzip
 	fi
 
 	shift 2
-	CLI.command "$gdbserver" "$@"
+	CLI.run v "$gdbserver" "$@"
 }
 
 function __debug_core()
@@ -116,7 +116,7 @@ function __debug_core()
 	local gdbserver="$2"
 
 	shift 2
-	CLI.command "$gdbserver" "$@"
+	CLI.run v "$gdbserver" "$@"
 }
 
 function __run()
@@ -125,7 +125,7 @@ function __run()
 	local gdbserver="$2"
 
 	shift 2
-	CLI.command "$gdb_mips" "$@"
+	CLI.run v "$gdb_mips" "$@"
 }
 
 function __cmd()

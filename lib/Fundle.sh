@@ -229,15 +229,15 @@ function Fundle.run_f1()
 	local v_arg=$(CLI.get_verbosity_opt "dv")
 
 	if [ ! -f "$rf1" ]; then
-		CLI.command scp $v_arg "$host":/home/robotpal/bin/run_f1.py "$rf1"	
+		CLI.run v2 scp $v_arg "$host":/home/robotpal/bin/run_f1.py "$rf1"	
 		CLI.die_check $? "copy run_f1"
 
-		CLI.command chmod u+x "$rf1"
+		CLI.run v2 chmod u+x "$rf1"
 		CLI.die_check $? "make run_f1 executable"
 	fi
 
 	shift
-	CLI.command $rf1 "$@"
+	CLI.run v $rf1 "$@"
 }
 
 function Fundle.get_model_descriptor()
@@ -249,7 +249,7 @@ function Fundle.get_model_descriptor()
 	local m_cnt=
 	local i=
 
-	http_code=$(CLI.command curl -s -w '%{response_code}' -o "$js" -X GET \
+	http_code=$(CLI.run v curl -s -w '%{response_code}' -o "$js" -X GET \
 			-H "Accept: application/json" \
 			-H "Content-Type: application/json" \
 			"$G_FUNDLE_HWMODELS_URL")
@@ -308,18 +308,18 @@ function Fundle.init()
 	F_FUNDLE_EMAIL="$email"
 	F_FUNDLE_PATH="$bundle"
 
-	Module.config 0 "Fundle"
-	Module.config 1 "name" "$F_FUNDLE_NAME"
-	Module.config 1 "bug id" "$F_FUNDLE_BUG_ID"
-	Module.config 1 "branch" "$F_FUNDLE_BRANCH"
-	Module.config 1 "product" "$F_FUNDLE_PRODUCT"
-	Module.config 1 "chip" "$F_FUNDLE_CHIP"
-	Module.config 1 "image source" "$F_FUNDLE_IMGSRC"
-	Module.config 1 "image directory" "$F_FUNDLE_IMGDIR"
-	Module.config 1 "creator" "$F_FUNDLE_EMAIL"
-	Module.config 1 "path" "$F_FUNDLE_PATH"
+	CLI.print_field 0 "Fundle"
+	CLI.print_field 1 "name" "$F_FUNDLE_NAME"
+	CLI.print_field 1 "bug id" "$F_FUNDLE_BUG_ID"
+	CLI.print_field 1 "branch" "$F_FUNDLE_BRANCH"
+	CLI.print_field 1 "product" "$F_FUNDLE_PRODUCT"
+	CLI.print_field 1 "chip" "$F_FUNDLE_CHIP"
+	CLI.print_field 1 "image source" "$F_FUNDLE_IMGSRC"
+	CLI.print_field 1 "image directory" "$F_FUNDLE_IMGDIR"
+	CLI.print_field 1 "creator" "$F_FUNDLE_EMAIL"
+	CLI.print_field 1 "path" "$F_FUNDLE_PATH"
 
-	CLI.command mkdir -p "$F_FUNDLE_IMGDIR"
+	CLI.run d mkdir -p "$F_FUNDLE_IMGDIR"
 }
 
 function Fundle.set_params()
@@ -407,11 +407,11 @@ function Fundle.package()
 	case "$platform" in
 	qemu|posix)
 		Fundle._generate_debug_tramp "$platform" "$which" "$debugme"
-		CLI.command chmod u+x "$debugme"
+		CLI.run d chmod u+x "$debugme"
 
 		if [ "$platform" = "qemu" ]; then
 			Fundle._generate_qemu_tramp "$which" "$qemume"
-			CLI.command chmod u+x "$qemume"
+			CLI.run d chmod u+x "$qemume"
 		fi
 		;;
 	*)
@@ -441,7 +441,7 @@ function Fundle.run()
 
 	# For running content locally, we keep the working directory outside the
 	# fundle directory since it's not a static artifact set.
-	CLI.command mkdir -p "$wd"
+	CLI.run d mkdir -p "$wd"
 
 	# Boot args are delimited by spaces, so we can safely capture this in an
 	# array.
@@ -483,7 +483,7 @@ function Fundle.run()
 		fi
 
 		CLI.pushdir "$wd"
-		CLI.command "${argv[@]}"
+		CLI.run v "${argv[@]}"
 		CLI.popdir
 		;;
 	qemu)
@@ -539,12 +539,12 @@ function Fundle.submit()
 	local job=
 
 	if [ ! -f "$ar" ]; then
-		CLI.command tar -cz${v_arg}f "$ar" -C "$F_FUNDLE_PATH" .
+		CLI.run v2 tar -cz${v_arg}f "$ar" -C "$F_FUNDLE_PATH" .
 		CLI.die_check $? "failed to create archive for submission"
 	fi
 
-	CLI.command scp $v_arg "$ar" "$host":~/
-	out=$(CLI.command ssh $v_arg "$host" /bin/bash < "$fodit")
+	CLI.run v scp $v_arg "$ar" "$host":~/
+	out=$(CLI.run v ssh $v_arg "$host" /bin/bash < "$fodit")
 	job=$(grep 'Enqueued as job ' <<< "$out")
 	job=$(strip_prefix "$job" 'Enqueued as job ')
 	job=$(grep -oE '^[0-9]+' <<< "$job")

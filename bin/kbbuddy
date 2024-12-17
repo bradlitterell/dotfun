@@ -65,10 +65,10 @@ function query_key_modulus()
 	url+="&format=binary"
 	url+="&key=$k"
 
-	CLI.command curl -s -X GET "$url" -o "$kf"
+	CLI.run v curl -s -X GET "$url" -o "$kf"
 	CLI.die_check $? "failed to query key modulus: $k"
 
-	mod=$(CLI.command xxd -g0 -p "$kf" | tr -d $'\n')
+	mod=$(CLI.run d xxd -g0 -p "$kf" | tr -d $'\n')
 
 	CLI.debug "$k = $mod"
 	echo "$mod"
@@ -232,7 +232,7 @@ function __cmd()
 	if [ -n "$O_CHECK_CSR" ]; then
 		local pubkey=$(CLI.get_run_state_path "pem")
 
-		CLI.command openssl req -pubkey -in "$O_CHECK_CSR" -noout -out "$pubkey"
+		CLI.run v openssl req -pubkey -in "$O_CHECK_CSR" -noout -out "$pubkey"
 		O_CHECK_KEY="$pubkey"
 	fi
 
@@ -247,7 +247,7 @@ function __cmd()
 	elif [ -n "$O_CHECK_KEY" ]; then
 		local mod=
 
-		mod=$(CLI.command openssl rsa -pubin -in "$O_CHECK_KEY" -modulus -noout)
+		mod=$(CLI.run v openssl rsa -pubin -in "$O_CHECK_KEY" -modulus -noout)
 		mod=${mod#Modulus=*}
 
 		O_CHECK_KEY="$(Bytes.measure "$G_SHA_LEN" "$mod")"

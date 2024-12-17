@@ -60,23 +60,23 @@ function __cmd()
 
 	v_arg=$(CLI.get_verbosity_opt "dv")
 	for p in "${G_HOMEBREW_PACKAGES[@]}"; do
-		CLI.command brew install ${v_arg} "$p"
+		CLI.run v brew install ${v_arg} "$p"
 		CLI.die_check $? "failed to install $p"
 	done
 
 	for p in "${G_PIP_PACKAGES[@]}"; do
-		CLI.command pip ${v_arg} install request
+		CLI.run v pip ${v_arg} install request
 		CLI.die_check $? "failed to install $p"
 	done
 
-	CLI.command mkdir -p "$xcompdir"
+	CLI.run d mkdir -p "$xcompdir"
 	CLI.die_check $? "failed to create cross-compiler directory"
 
-	CLI.command curl $s_arg "$G_BINUTILS" -o "$binutils"
+	CLI.run v curl $s_arg "$G_BINUTILS" -o "$binutils"
 	CLI.die_check $? "failed to fetch binutils"
 
 	v_arg=$(CLI.get_verbosity_opt "v")
-	CLI.command tar -xz${v_arg}f "$binutils" -C "$xcompdir"
+	CLI.run v tar -xz${v_arg}f "$binutils" -C "$xcompdir"
 	CLI.die_check $? "failed to unarchive binutils"
 }
 
