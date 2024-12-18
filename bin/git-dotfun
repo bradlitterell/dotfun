@@ -82,7 +82,6 @@ function __main()
 		O_ACTION="__funrun"
 	fi
 
-	Module.dump "$me" "option"
 	__cmd "$@"
 }
 
