@@ -80,11 +80,8 @@ function FunDotParams.init()
 	FunDotParams.set_value "RUN_TARGET" "$chip"
 	FunDotParams.set_value "EXTRA_EMAIL" "$email"
 
-	CLI.print_field 0 "FunDotParams"
-	CLI.print_field 1 "name" "$name"
-	CLI.print_field 1 "hw model" "$product"
-	CLI.print_field 1 "run target" "$chip"
-	CLI.print_field 1 "creator" "$email"
+	Module.dump "FunDotParams" "field"
+	Module.dump_array "FunDotParams" "field" "PARAMS" 2
 }
 
 function FunDotParams.init_with_file()
@@ -92,8 +89,6 @@ function FunDotParams.init_with_file()
 	local f="$1"
 
 	F_FUNDOTPARAMS_PARAMS=()
-	CLI.print_field 0 "FunDotParams"
-
 	while read -r l; do
 		local k=
 		local v=
@@ -126,6 +121,9 @@ function FunDotParams.init_with_file()
 		CLI.print_field 1 "$k" "$v"
 		F_FUNDOTPARAMS_PARAMS+=("$k" "$v")
 	done < "$f"
+
+	Module.dump "Fundle" "field"
+	Module.dump_array "Fundle" "field" "PARAMS" 2
 }
 
 function FunDotParams.set_value()
@@ -194,15 +192,12 @@ function FunDotParams.write()
 
 	# Don't write out if we're missing required parameters.
 	FunDotParams._assert_required
-	CLI.print_field 0 "FunDotParams [write]"
-
 	for (( i = 0; i < ${#F_FUNDOTPARAMS_PARAMS[@]}; i += 2 )); do
 		local ki=${F_FUNDOTPARAMS_PARAMS[$(( i + 0 ))]}
 		local vi=${F_FUNDOTPARAMS_PARAMS[$(( i + 1 ))]}
 
 		# Refuse to write out blank parameters.
 		CLI.die_ifz "$vi" "invalid value for param: $ki"
-		CLI.print_field 1 "$ki" "$vi"
 		echo "$ki : $vi" >> "$f"
 	done
 }

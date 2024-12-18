@@ -233,6 +233,7 @@ function __main()
 	O_COMMAND="$1"
 	shift
 
+	Module.dump "$me" "option"
 	__cmd "$@"
 }
 

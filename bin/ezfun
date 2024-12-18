@@ -272,6 +272,8 @@ function __main()
 
 	release_dot_py_hacks "$O_SDK"
 	link_sdk_core_hack "$O_SDK/bin"
+
+	Module.dump "$me" "option"
 	__cmd "$@"
 }
 

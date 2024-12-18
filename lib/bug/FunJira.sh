@@ -411,11 +411,7 @@ function FunJira.init()
 	F_FUNJIRA_USERNAME="$username"
 	F_FUNJIRA_SECRETS="$secrets"
 
-	CLI.print_field 0 "fungible jira"
-	CLI.print_field 1 "api" "$G_FUNJIRA_API"
-	CLI.print_field 1 "project" "$F_FUNJIRA_PROJECT"
-	CLI.print_field 1 "username" "$F_FUNJIRA_USERNAME"
-	CLI.print_field 1 "secrets store" "$F_FUNJIRA_SECRETS"
+	Module.dump "FunJira" "field"
 }
 
 function FunJira.init_problem()
@@ -423,8 +419,7 @@ function FunJira.init_problem()
 	local n="$1"
 
 	F_FUNJIRA_ISSUE="$n"
-	CLI.print_field 0 "fungible jira issue"
-	CLI.print_field 1 "identifier" "$F_FUNJIRA_ISSUE"
+	Module.dump "FunJira" "field"
 }
 
 function FunJira.set_request_timeout()

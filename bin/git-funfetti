@@ -817,6 +817,13 @@ function __main()
 		shift
 	fi
 
+	Module.dump "$me" "option"
+	Module.dump_array "$me" "option" "BRANCHES" 2
+	Module.dump_array "$me" "option" "PROJECTS" 2
+	Module.dump_array "$me" "option" "STYLES" 2
+	Module.dump_array "$me" "option" "MAKEFLAGS" 1
+	Module.dump_array "$me" "option" "EMAIL_ADDRESSES" 2
+	Module.dump_array "$me" "option" "ACTIONS" 1
 	__cmd "$@"
 }
 

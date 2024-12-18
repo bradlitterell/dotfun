@@ -308,18 +308,8 @@ function Fundle.init()
 	F_FUNDLE_EMAIL="$email"
 	F_FUNDLE_PATH="$bundle"
 
-	CLI.print_field 0 "Fundle"
-	CLI.print_field 1 "name" "$F_FUNDLE_NAME"
-	CLI.print_field 1 "bug id" "$F_FUNDLE_BUG_ID"
-	CLI.print_field 1 "branch" "$F_FUNDLE_BRANCH"
-	CLI.print_field 1 "product" "$F_FUNDLE_PRODUCT"
-	CLI.print_field 1 "chip" "$F_FUNDLE_CHIP"
-	CLI.print_field 1 "image source" "$F_FUNDLE_IMGSRC"
-	CLI.print_field 1 "image directory" "$F_FUNDLE_IMGDIR"
-	CLI.print_field 1 "creator" "$F_FUNDLE_EMAIL"
-	CLI.print_field 1 "path" "$F_FUNDLE_PATH"
-
 	CLI.run d mkdir -p "$F_FUNDLE_IMGDIR"
+	Module.dump "Fundle" "field"
 }
 
 function Fundle.set_params()
@@ -418,6 +408,8 @@ function Fundle.package()
 		;;
 	esac
 
+	Module.dump_array "Fundle" "field" "BOOT_ARGS" 1
+	Module.dump_array "Fundle" "field" "EXTRA_EMAILS" 1
 	FunDotParams.write "$params"
 }
 

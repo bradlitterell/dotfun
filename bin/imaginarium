@@ -477,6 +477,7 @@ function __main()
 	O_IMAGE="$1"
 	shift
 
+	Module.dump "$me" "option"
 	__cmd "$@"
 }
 

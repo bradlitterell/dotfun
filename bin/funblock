@@ -111,7 +111,8 @@ function __main()
 		esac
 	done
 
-	__cmd
+	Module.dump "$me" "option"
+	__cmd "$@"
 }
 
 __main "$@"

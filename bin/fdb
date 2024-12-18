@@ -210,6 +210,8 @@ function __main()
 	fi
 
 	CLI.die_ifz "$O_SDK" "must specify an SDK or set SDKDIR"
+
+	Module.dump "$me" "option"
 	__cmd "$@"
 }
 
