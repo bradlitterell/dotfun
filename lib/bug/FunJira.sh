@@ -73,7 +73,7 @@ function FunJira._api()
 	local message=
 
 	pw=$(FunJira._get_password)
-	CLI.die_ifz $? "failed to get jira password for $F_FUNJIRA_USERNAME"
+	CLI.die_ifz "$pw" "failed to get jira password for $F_FUNJIRA_USERNAME"
 
 	# The Jira server is a bit flaky, so we just always use a timeout.
 	auth="${F_FUNJIRA_USERNAME}:$pw"

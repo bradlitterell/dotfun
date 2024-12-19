@@ -1,6 +1,6 @@
 {
-    "Name": "FunOS",
-    "URL": "fungible://FunOS",
+    "Name": "FunBlockDev",
+    "URL": "fungible://FunBlockDev",
     "Build":
     {
         "Tool": "make",
@@ -9,12 +9,8 @@
         "Directory": "./build",
         "Commands":
         {
-            "Execute": "make -j%NCPU% MACHINE=%TARGET% SIGN=1",
+            "Execute": "make -j%NCPU% MACHINE=%TARGET%",
             "Clean": "make clean"
-        },
-        "Styles":
-        {
-            "issu": "ISSU_XDATA=1 NU_ISSU=1"
         }
     },
     "Install":
@@ -36,11 +32,8 @@
     "TagPrefix": "bld_",
     "Images":
     {
-        "default": "stripped",
-        "rich": "funos-%TARGET%",
-        "stripped": "funos-%TARGET%.stripped",
-        "elf": "funos-%TARGET%.stripped",
-        "signed": "funos-%TARGET%.signed"
+        "default": "library",
+        "library": "libfunblockdev-%TARGET%.a"
     },
     "Dependencies":
     [
