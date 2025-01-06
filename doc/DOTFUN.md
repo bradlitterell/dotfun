@@ -25,7 +25,7 @@ should be good to go.
 
 ## Another way
 
-If you don't want to clone these repositories to an arbitrary location unrelated to $HOME, here is an alternative
+If you want to clone these repositories to an arbitrary location unrelated to $HOME, here is an alternative
 clone script:
 
 ``` bash
@@ -41,7 +41,7 @@ git --git-dir=$TARGET/dotfun/.git --work-tree=$TARGET/dotfun config status.showU
 
 ## running under WSL
 
-Running under WSL with Ubuntu 22., the shebang lines `#!/bin/bash -O extglobs` fails to parse and generates an error.
+Running under WSL with Ubuntu 22.04, the shebang lines `#!/bin/bash -O extglobs` fails to parse and generates an error.
 However, running the script with bash in a subshell seems to work.  Reason currently unknown.
 
 ``` bash
@@ -50,7 +50,7 @@ bash -O extglob ./damien_dotfiles/dotfun/bin/imaginarium /tmp/SbpQemuBootTestkgq
 
 Currently this generates some warnings, but seems to dump the certificate:
 
-``` bash
+``` text
 getconf: Unrecognized variable `DARWIN_USER_TEMP_DIR'
 ln: invalid option -- 'h'
 Try 'ln --help' for more information.
