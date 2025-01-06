@@ -322,7 +322,7 @@ function __print_header()
 	case "$sect" in
 	certificate)
 		if [ -n "$G_CERTIFICATE_SECTION" ]; then
-			CLI.print_field 0 "$sect"
+			CLI.dump_field 0 "$sect"
 			G_CERTIFICATE_SECTION=
 		fi
 
@@ -331,15 +331,15 @@ function __print_header()
 			return
 		fi
 
-		CLI.print_field 1 "$fld" "$v"
+		CLI.dump_field 1 "$fld" "$v"
 		;;
 	'auth header')
 		if [ -n "$G_AUTH_SECTION" ]; then
-			CLI.print_field 0 "$sect"
+			CLI.dump_field 0 "$sect"
 			G_AUTH_SECTION=
 		fi
 
-		CLI.print_field 1 "$fld" "$v"
+		CLI.dump_field 1 "$fld" "$v"
 		;;
 	end)
 		;;
